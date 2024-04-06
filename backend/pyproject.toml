@@ -1,0 +1,63 @@
+[tool.poetry]
+name = "deaths-door"
+version = "0.1.0"
+description = "A tool to facilitate our games of Blood on the Clocktower."
+authors = ["Ryan Slama <ryanmslama@gmail.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+pyright = "^1.1.355"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.3.0"
+pytest = "^8.1.1"
+coverage = { extras = ["toml"], version = "^7.4.1" }
+pytest-cov = "^4.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.coverage.paths]
+source = ["src", "*/site-packages"]
+
+[tool.coverage.run]
+branch = true
+source = ["deaths_door"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.ruff.lint]
+select = [
+    # Pycodestyle
+    "E",
+    "W",
+    # flake-bugbear
+    "B",
+    "B9",
+    "D",  # Docstrings
+    "F",  # Pyflakes
+    "I",  # isort
+    "S",  # flake-bandit security rules
+    "N",  # PEP 8 naming
+]
+ignore = [
+    # Missing docstring in public module
+    "D100",
+    # Missing docstring in public package
+    "D104",
+    # no-blank-line-before-class (incompatible with D203)
+    "D203",
+    # multi-line-summary-first-line (incompatible with multi-line-summary-second-line)
+    "D212",
+    # Allow asserts
+    "S101",
+]
+
+[tool.pyright]
+include = ["src"]
+exclude = ["**/__pycache__"]
+typeCheckingMode = "strict"
