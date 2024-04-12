@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException
 
+from .script import Script
 from .sound_fx import SoundFX
 
 app = FastAPI()
@@ -9,13 +10,14 @@ app = FastAPI()
 @app.get("/")
 async def read_root():
     """Sample API endpoint."""
-    return {"Hello": "World"}
+    return Script("trouble_brewing").characters
 
 
-@app.get("/items/{item_id}")
-async def read_item(item_id: int, q: str | None = None):
+@app.get("/role/{name}")
+async def read_role(name: str):
     """Sample API endpoint."""
-    return {"item_id": item_id, "q": q}
+    chars = Script("trouble_brewing").characters
+    return next((x for x in chars if x.name.lower() == name.lower()), None)
 
 
 @app.get("/play_sound_fx/{name}")

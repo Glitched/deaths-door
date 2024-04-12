@@ -1,0 +1,137 @@
+[
+    {
+        "name": "Washerwoman",
+        "description": "You start knowing that 1 of 2 players is a particular Townsfolk.",
+        "category": "townsfolk",
+        "alignment": "good"
+    },
+    {
+        "name": "Librarian",
+        "description": "You start knowing that 1 of 2 players is a particular Outsider. (Or that zero are in play)",
+        "category": "townsfolk",
+        "alignment": "good"
+    },
+    {
+        "name": "Investigator",
+        "description": "You start knowing that 1 of 2 players is a particular Minion.",
+        "category": "townsfolk",
+        "alignment": "good"
+    },
+    {
+        "name": "Chef",
+        "description": "You start knowing how many pairs of evil players are neighboring each other.",
+        "category": "townsfolk",
+        "alignment": "good"
+    },
+    {
+        "name": "Empath",
+        "description": "Each night, you learn how many of your 2 alive neighbors are evil.",
+        "category": "townsfolk",
+        "alignment": "good"
+    },
+    {
+        "name": "Fortune Teller",
+        "description": "Each night, choose 2 players: you learn if either is a Demon. There is 1 good player that registers falsely to you.",
+        "category": "townsfolk",
+        "alignment": "good"
+    },
+    {
+        "name": "Undertaker",
+        "description": "Each night*, you learn a character that died by execution today.",
+        "category": "townsfolk",
+        "alignment": "good"
+    },
+    {
+        "name": "Monk",
+        "description": "Each night*, choose a player (not yourself): they are safe from the Demon tonight.",
+        "category": "townsfolk",
+        "alignment": "good"
+    },
+    {
+        "name": "Ravenkeeper",
+        "description": "If you die at night, you are woken to choose a player: you learn their character.",
+        "category": "townsfolk",
+        "alignment": "good"
+    },
+    {
+        "name": "Virgin",
+        "description": "The 1st time you are nominated, if the nominator is a Townsfolk, they are executed.",
+        "category": "townsfolk",
+        "alignment": "good"
+    },
+    {
+        "name": "Slayer",
+        "description": "Once per game, during the day, publicly choose a player: if they are the Demon, they die.",
+        "category": "townsfolk",
+        "alignment": "good"
+    },
+    {
+        "name": "Soldier",
+        "description": "You are safe from the Demon.",
+        "category": "townsfolk",
+        "alignment": "good"
+    },
+    {
+        "name": "Mayor",
+        "description": "If no execution occurs while only 3 players live, you win. If you die at night, another player might die instead.",
+        "category": "townsfolk",
+        "alignment": "good"
+    },
+    {
+        "name": "Butler",
+        "description": "Each night, choose a player (not yourself): tomorrow, you may only vote if they are. You cannot be drunk or poisoned.",
+        "category": "outsider",
+        "alignment": "good"
+    },
+    {
+        "name": "Drunk",
+        "description": "You do not know you are the Drunk. You think you are a Townsfolk, but your ability malfunctions.",
+        "category": "outsider",
+        "alignment": "good"
+    },
+    {
+        "name": "Recluse",
+        "description": "You might register as evil & as a Minion or Demon, even if dead.",
+        "category": "outsider",
+        "alignment": "good"
+    },
+    {
+        "name": "Saint",
+        "description": "If you die by execution, you lose.",
+        "category": "outsider",
+        "alignment": "good"
+    },
+    {
+        "name": "Poisoner",
+        "description": "Each night, choose a player: their ability malfunctions tonight and tomorrow day.",
+        "category": "minion",
+        "alignment": "evil"
+    },
+    {
+        "name": "Spy",
+        "description": "Each night, you see the Grimoire. You might register as good & as a Townsfolk or Outsider, even if dead.",
+        "category": "minion",
+        "alignment": "evil"
+    },
+    {
+        "name": "Baron",
+        "description": "You have no ability. [There are 2 extra Outsiders in play]",
+        "category": "minion",
+        "alignment": "evil",
+        "changes": {
+            "outsider": 2
+        }
+    },
+    {
+        "name": "Scarlet Woman",
+        "description": "If there are 5 or more players alive & the Demon dies, you become the Demon. (Travellers do not count)",
+        "category": "minion",
+        "alignment": "evil"
+    },
+    {
+        "name": "Imp",
+        "description": "Each night*, choose a player: they die. If you chose yourself, you die & a Minion becomes the Imp.",
+        "category": "demon",
+        "alignment": "evil"
+    }
+]
