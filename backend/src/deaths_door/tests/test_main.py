@@ -1,6 +1,12 @@
-from deaths_door import main
+import pytest
+from httpx import AsyncClient
+from main import app
 
 
-def test_hello_world_succeeds():
+@pytest.mark.anyio
+async def test_hello_world_succeeds():
     """Asserts that we return a fun message."""
-    assert main.hello_world() == "Hello, World!"
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        response = await ac.get("/")
+    assert response.status_code == 200
+    assert response.json() == {"message": "Tomato"}
