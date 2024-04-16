@@ -46,5 +46,8 @@ class Script:
     def __init__(self, script_name: str) -> None:
         """Load a script from JSON."""
         adapter = TypeAdapter(list[Role])
-        with open(f"src/assets/scripts/{script_name}.json", "r") as f:
-            self.characters = adapter.validate_json(f.read())
+        try:
+            with open(f"src/assets/scripts/{script_name}.json", "r") as f:
+                self.characters = adapter.validate_json(f.read())
+        except FileNotFoundError as err:
+            raise ValueError(f"Script {script_name} not found") from err
