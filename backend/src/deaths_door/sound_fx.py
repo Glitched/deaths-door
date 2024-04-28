@@ -21,3 +21,11 @@ class SoundFX:
     def death(self):
         """Return the sound effect for a player death."""
         return pygame.mixer.Sound("src/assets/sound_fx/death.wav")
+
+    def alarm(self):
+        """Return the sound effect for an alarm ringing."""
+        return pygame.mixer.Sound("src/assets/sound_fx/alarm.wav")
+
+    def rooster(self):
+        """Return the sound effect for rooster crowing."""
+        return pygame.mixer.Sound("src/assets/sound_fx/rooster.wav")

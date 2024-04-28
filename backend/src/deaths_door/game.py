@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .script import Script
+from .script import Script, ScriptName
 
 
 @dataclass
@@ -36,7 +36,7 @@ class Game:
     script: Script
     base_role_distribution: RoleDistribution
 
-    def __init__(self, player_count: int, script_name: str) -> None:
+    def __init__(self, player_count: int, script_name: ScriptName) -> None:
         """Create a new game."""
         dist = distributions.get(player_count)
         if dist is None:

@@ -3,6 +3,24 @@ from enum import Enum
 from pydantic import BaseModel, TypeAdapter
 
 
+class ScriptName(str, Enum):
+    """The name of a script."""
+
+    TROUBLE_BREWING = "trouble_brewing"
+    SECTS_AND_VIOLETS = "sects_and_violents"
+    BAD_MOON_RISING = "bad_moon_rising"
+
+    def __str__(self) -> str:
+        """Return the human readable name of the script."""
+        match self:
+            case ScriptName.TROUBLE_BREWING:
+                return "Trouble Brewing"
+            case ScriptName.SECTS_AND_VIOLETS:
+                return "Sects and Violents"
+            case ScriptName.BAD_MOON_RISING:
+                return "Bad Moon Rising"
+
+
 class Category(str, Enum):
     """The category of the role."""
 
@@ -43,7 +61,7 @@ class Script:
 
     characters: list[Role]
 
-    def __init__(self, script_name: str) -> None:
+    def __init__(self, script_name: ScriptName) -> None:
         """Load a script from JSON."""
         adapter = TypeAdapter(list[Role])
         try:
