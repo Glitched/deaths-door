@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from enum import Enum
 
 from pydantic import BaseModel, TypeAdapter
@@ -19,6 +21,13 @@ class ScriptName(str, Enum):
                 return "Sects and Violents"
             case ScriptName.BAD_MOON_RISING:
                 return "Bad Moon Rising"
+
+    @classmethod
+    def from_str(cls, name: str) -> ScriptName | None:
+        """Return the ScriptName for a given string if present, else return none."""
+        for script in cls:
+            if script.value == name.lower():
+                return script
 
 
 class Category(str, Enum):
@@ -59,13 +68,27 @@ class Role(BaseModel):
 class Script:
     """Represent a Blood on the Clocktower script."""
 
-    characters: list[Role]
+    roles: list[Role]
+
+    @classmethod
+    def from_str(cls, name: str) -> Script | None:
+        """Return the Script for a given string if present, else return none."""
+        script_name = ScriptName.from_str(name)
+        if script_name is None:
+            return None
+        return cls(script_name)
 
     def __init__(self, script_name: ScriptName) -> None:
         """Load a script from JSON."""
         adapter = TypeAdapter(list[Role])
         try:
             with open(f"src/assets/scripts/{script_name}.json", "r") as f:
-                self.characters = adapter.validate_json(f.read())
+                self.roles = adapter.validate_json(f.read())
         except FileNotFoundError as err:
             raise ValueError(f"Script {script_name} not found") from err
+
+    def get_role(self, name: str) -> Role | None:
+        """Get a role by name."""
+        for role in self.roles:
+            if role.name.lower() == name.lower():
+                return role
