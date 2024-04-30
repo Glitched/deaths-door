@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 
 from .script import Category, Role, Script, ScriptName
@@ -47,10 +48,6 @@ class Game:
         self.script = Script(script_name)
         self.roles = []
 
-    def get_remaining_roles(self) -> set[Role]:
-        """Get the roles that are not yet in the game."""
-        return set(self.script.roles) - set(self.roles)
-
     def add_role(self, role_name: str) -> None:
         """Add a role to the game."""
         role = self.script.get_role(role_name)
@@ -68,26 +65,26 @@ class Game:
     def get_free_space(self) -> RoleDistribution:
         """Get the number of roles that can be added to the game."""
         current_role_counts = self.get_current_role_counts()
+        base = copy.copy(self.base_role_distribution)
 
         for role in self.roles:
             if role.changes is not None:
                 change = role.changes
-                if change.townsfolk is not None:
-                    current_role_counts.townsfolk += change.townsfolk
                 if change.outsider is not None:
-                    current_role_counts.outsiders += change.outsider
+                    base.outsiders += change.outsider
+                    base.townsfolk -= change.outsider
                 if change.minion is not None:
-                    current_role_counts.minions += change.minion
+                    base.minions += change.minion
+                    base.townsfolk -= change.minion
                 if change.demon is not None:
-                    current_role_counts.demons += change.demon
+                    base.demons += change.demon
+                    base.townsfolk -= change.demon
 
         return RoleDistribution(
-            townsfolk=self.base_role_distribution.townsfolk
-            - current_role_counts.townsfolk,
-            outsiders=self.base_role_distribution.outsiders
-            - current_role_counts.outsiders,
-            minions=self.base_role_distribution.minions - current_role_counts.minions,
-            demons=self.base_role_distribution.demons - current_role_counts.demons,
+            townsfolk=base.townsfolk - current_role_counts.townsfolk,
+            outsiders=base.outsiders - current_role_counts.outsiders,
+            minions=base.minions - current_role_counts.minions,
+            demons=base.demons - current_role_counts.demons,
         )
 
     def get_current_role_counts(self) -> RoleDistribution:

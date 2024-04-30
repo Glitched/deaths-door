@@ -9,7 +9,7 @@ class ScriptName(str, Enum):
     """The name of a script."""
 
     TROUBLE_BREWING = "trouble_brewing"
-    SECTS_AND_VIOLETS = "sects_and_violents"
+    SECTS_AND_VIOLETS = "sects_and_violets"
     BAD_MOON_RISING = "bad_moon_rising"
 
     def __str__(self) -> str:
@@ -18,7 +18,7 @@ class ScriptName(str, Enum):
             case ScriptName.TROUBLE_BREWING:
                 return "Trouble Brewing"
             case ScriptName.SECTS_AND_VIOLETS:
-                return "Sects and Violents"
+                return "Sects and Violets"
             case ScriptName.BAD_MOON_RISING:
                 return "Bad Moon Rising"
 
@@ -82,7 +82,7 @@ class Script:
         """Load a script from JSON."""
         adapter = TypeAdapter(list[Role])
         try:
-            with open(f"src/assets/scripts/{script_name}.json", "r") as f:
+            with open(f"src/assets/scripts/{script_name.value}.json", "r") as f:
                 self.roles = adapter.validate_json(f.read())
         except FileNotFoundError as err:
             raise ValueError(f"Script {script_name} not found") from err

@@ -10,12 +10,6 @@ app = FastAPI()
 game = None
 
 
-@app.get("/")
-async def read_root():
-    """Sample API endpoint."""
-    return Script(ScriptName.TROUBLE_BREWING).roles
-
-
 @app.get("/scripts")
 async def read_scripts():
     """Return a list of available scripts."""
