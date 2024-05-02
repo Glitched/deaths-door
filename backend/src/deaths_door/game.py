@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 
-from .script import Category, Role, Script, ScriptName
+from .script import Category, Script, ScriptName
 
 
 @dataclass
@@ -36,7 +36,7 @@ class Game:
 
     script: Script
     base_role_distribution: RoleDistribution
-    roles: list[Role]
+    roles: set[str]
 
     def __init__(self, player_count: int, script_name: ScriptName) -> None:
         """Create a new game."""
@@ -46,29 +46,36 @@ class Game:
         self.base_role_distribution = dist
 
         self.script = Script(script_name)
-        self.roles = []
+        self.roles = set()
 
     def add_role(self, role_name: str) -> None:
         """Add a role to the game."""
-        role = self.script.get_role(role_name)
-        if role is None:
+        if not self.script.has_role(role_name):
             raise ValueError(f"Role not found: {role_name}")
-        self.roles.append(role)
 
-    def remove_role(self, role_name: str) -> bool:
+        if role_name in self.roles:
+            raise ValueError(f"Role already in game: {role_name}")
+
+        self.roles.add(role_name)
+
+    def remove_role(self, role_name: str) -> None:
         """Remove a role from the game."""
-        for role in self.roles:
-            if role.name == role_name:
-                self.roles.remove(role)
-                return True
-        return False
+        if role_name not in self.roles:
+            raise ValueError(f"Role not in game: {role_name}")
+
+        self.roles.remove(role_name)
 
     def get_free_space(self) -> RoleDistribution:
         """Get the number of roles that can be added to the game."""
         current_role_counts = self.get_current_role_counts()
         base = copy.copy(self.base_role_distribution)
 
-        for role in self.roles:
+        for role_name in self.roles:
+            role = self.script.get_role(role_name)
+            # role is known not to be none
+            if role is None:
+                raise ValueError("Invariant Broken: invalid role: {role_name}")
+
             if role.changes is not None:
                 change = role.changes
                 if change.outsider is not None:
@@ -92,7 +99,12 @@ class Game:
         """Get the number of roles that are currently in the game."""
         current_roles = RoleDistribution(townsfolk=0, outsiders=0, minions=0, demons=0)
 
-        for role in self.roles:
+        for role_name in self.roles:
+            role = self.script.get_role(role_name)
+            # role is known not to be none
+            if role is None:
+                raise ValueError("Invariant Broken: invalid role: {role_name}")
+
             match role.category:
                 case Category.TOWNSFOLK:
                     current_roles.townsfolk += 1

@@ -68,7 +68,7 @@ class Role(BaseModel):
 class Script:
     """Represent a Blood on the Clocktower script."""
 
-    roles: list[Role]
+    roles: dict[str, Role]
 
     @classmethod
     def from_str(cls, name: str) -> Script | None:
@@ -83,12 +83,21 @@ class Script:
         adapter = TypeAdapter(list[Role])
         try:
             with open(f"src/assets/scripts/{script_name.value}.json", "r") as f:
-                self.roles = adapter.validate_json(f.read())
+                role_list = adapter.validate_json(f.read())
+                self.roles = {
+                    self.normalize_role_name(role.name): role for role in role_list
+                }
         except FileNotFoundError as err:
             raise ValueError(f"Script {script_name} not found") from err
 
     def get_role(self, name: str) -> Role | None:
         """Get a role by name."""
-        for role in self.roles:
-            if role.name.lower() == name.lower():
-                return role
+        return self.roles[self.normalize_role_name(name)]
+
+    def has_role(self, name: str) -> bool:
+        """Return True if the role is in the given script."""
+        return self.normalize_role_name(name) in self.roles
+
+    def normalize_role_name(self, name: str) -> str:
+        """Normalize a role name for simplicity."""
+        return name.lower().strip()
