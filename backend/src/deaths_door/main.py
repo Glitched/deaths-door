@@ -7,7 +7,7 @@ from .sound_fx import SoundFX, SoundName
 
 app = FastAPI()
 
-game: None | Game = Game(7, ScriptName.TROUBLE_BREWING)
+game = Game(7, ScriptName.TROUBLE_BREWING)
 
 
 @app.get("/script/list")
@@ -54,9 +54,6 @@ async def new_game(str_script_name: str, player_count: int):
 async def get_game_roles():
     """Sample API endpoint."""
     global game
-    if game is None:
-        raise HTTPException(status_code=404, detail="No game started")
-
     return game.roles
 
 
@@ -64,8 +61,6 @@ async def get_game_roles():
 async def add_role(role_name: str):
     """Sample API endpoint."""
     global game
-    if game is None:
-        raise HTTPException(status_code=404, detail="No game started")
 
     try:
         game.add_role(role_name)
@@ -79,8 +74,6 @@ async def add_role(role_name: str):
 async def remove_role(role_name: str):
     """Sample API endpoint."""
     global game
-    if game is None:
-        raise HTTPException(status_code=404, detail="No game started")
 
     did_remove = game.remove_role(role_name)
     if not did_remove:
