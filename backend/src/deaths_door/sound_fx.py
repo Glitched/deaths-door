@@ -37,7 +37,7 @@ class SoundFX:
 
     def get_sound(self, sound_name: SoundName):
         """Return the sound effect for a given name."""
-        return pygame.mixer.Sound("src/assets/sound_fx/{sound_name}.wav")
+        return pygame.mixer.Sound(f"src/assets/sound_fx/{sound_name.value}.wav")
 
     def play(self, sound_name: SoundName):
         """Play and return the given sound."""

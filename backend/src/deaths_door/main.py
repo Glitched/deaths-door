@@ -12,13 +12,13 @@ app = FastAPI()
 game = Game(7, ScriptName.TROUBLE_BREWING)
 
 
-@app.get("/script/list")
+@app.get("/scripts/list")
 async def read_scripts():
     """Return a list of available scripts."""
     return {x: str(x) for x in list(ScriptName)}
 
 
-@app.get("/script/{script_name}/role")
+@app.get("/scripts/{script_name}/role")
 async def read_roles(script_name: str):
     """List the roles for the given script."""
     script = Script.from_str(script_name)
@@ -30,7 +30,7 @@ async def read_roles(script_name: str):
 
 # TODO: Can we consolidate this into the method above?
 # I don't have internet so I can't check the docs.
-@app.get("/script/{script}/role/{name}")
+@app.get("/scripts/{script}/role/{name}")
 async def read_role(script_name: str, role_name: str):
     """Get a given role for a script."""
     script = Script.from_str(script_name)
@@ -82,7 +82,7 @@ async def remove_role(role_name: str):
         raise HTTPException(status_code=404, detail="Role not in script")
 
 
-@app.get("/play_sound/{name}")
+@app.get("/sounds/play/{name}")
 async def play_sound(name: str):
     """Sample API endpoint."""
     sound_name = SoundName.from_str(name)
@@ -93,3 +93,9 @@ async def play_sound(name: str):
     SoundFX().play(sound_name)
 
     return {"ok": "true"}
+
+
+@app.get("/sounds/list")
+async def list_sounds():
+    """Return the names of available sounds to play."""
+    return list(SoundName)
