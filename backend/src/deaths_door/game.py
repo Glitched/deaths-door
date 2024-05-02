@@ -55,12 +55,13 @@ class Game:
             raise ValueError(f"Role not found: {role_name}")
         self.roles.append(role)
 
-    def remove_role(self, role_name: str) -> None:
+    def remove_role(self, role_name: str) -> bool:
         """Remove a role from the game."""
         for role in self.roles:
             if role.name == role_name:
                 self.roles.remove(role)
-                break
+                return True
+        return False
 
     def get_free_space(self) -> RoleDistribution:
         """Get the number of roles that can be added to the game."""
