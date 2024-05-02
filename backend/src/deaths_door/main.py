@@ -3,7 +3,7 @@ from fastapi.exceptions import HTTPException
 
 from .game import Game
 from .script import Script, ScriptName
-from .sound_fx import SoundFX
+from .sound_fx import SoundFX, SoundName
 
 app = FastAPI()
 
@@ -90,10 +90,11 @@ async def remove_role(role_name: str):
 @app.get("/play_sound/{name}")
 async def play_sound(name: str):
     """Sample API endpoint."""
-    match name:
-        case "death":
-            SoundFX().death().play()
-        case _:
-            raise HTTPException(status_code=404, detail="Sound not found")
+    sound_name = SoundName.from_str(name)
+
+    if sound_name is None:
+        raise HTTPException(status_code=404, detail="Sound not found")
+
+    SoundFX().play(sound_name)
 
     return {"ok": "true"}
