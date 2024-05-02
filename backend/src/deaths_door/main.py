@@ -42,7 +42,7 @@ async def read_role(script_name: str, role_name: str):
 
 @app.get("/game/new/{str_script_name}/{player_count}")
 async def new_game(str_script_name: str, player_count: int):
-    """Sample API endpoint."""
+    """Start a new game."""
     global game
 
     script_name = ScriptName.from_str(str_script_name)
@@ -54,14 +54,28 @@ async def new_game(str_script_name: str, player_count: int):
 
 @app.get("/game/roles")
 async def get_game_roles():
-    """Sample API endpoint."""
+    """List the names of roles present in the current game."""
     global game
     return game.roles
 
 
+@app.get("/game/script")
+async def get_game_script():
+    """Return the name of the script for the current game."""
+    global game
+    return game.script.name.value
+
+
+@app.get("/game/open_slots")
+async def open_slots():
+    """Add the given role to the current game."""
+    global game
+    return game.get_open_slots()
+
+
 @app.get("/game/add_role/{role_name}")
 async def add_role(role_name: str):
-    """Sample API endpoint."""
+    """Add the given role to the current game."""
     global game
 
     try:
@@ -69,7 +83,7 @@ async def add_role(role_name: str):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=e.args) from e
 
-    return game.get_free_space()
+    return game.get_open_slots()
 
 
 @app.get("/game/remove_roll/{role_name}")
@@ -81,6 +95,8 @@ async def remove_role(role_name: str):
     if not did_remove:
         raise HTTPException(status_code=404, detail="Role not in script")
 
+    return game.get_open_slots()
+
 
 @app.get("/sounds/play/{name}")
 async def play_sound(name: str):
@@ -91,8 +107,6 @@ async def play_sound(name: str):
         raise HTTPException(status_code=404, detail="Sound not found")
 
     SoundFX().play(sound_name)
-
-    return {"ok": "true"}
 
 
 @app.get("/sounds/list")

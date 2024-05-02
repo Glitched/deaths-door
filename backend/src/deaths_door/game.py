@@ -65,7 +65,7 @@ class Game:
 
         self.roles.remove(role_name)
 
-    def get_free_space(self) -> RoleDistribution:
+    def get_open_slots(self) -> RoleDistribution:
         """Get the number of roles that can be added to the game."""
         current_role_counts = self.get_current_role_counts()
         base = copy.copy(self.base_role_distribution)

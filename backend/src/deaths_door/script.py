@@ -69,6 +69,7 @@ class Script:
     """Represent a Blood on the Clocktower script."""
 
     roles: dict[str, Role]
+    name: ScriptName
 
     @classmethod
     def from_str(cls, name: str) -> Script | None:
@@ -80,6 +81,8 @@ class Script:
 
     def __init__(self, script_name: ScriptName) -> None:
         """Load a script from JSON."""
+        self.name = script_name
+
         adapter = TypeAdapter(list[Role])
         try:
             with open(f"src/assets/scripts/{script_name.value}.json", "r") as f:
