@@ -8,10 +8,10 @@ from deaths_door.main import app
 async def test_hello_world_succeeds():
     """Asserts that we return a fun message."""
     async with AsyncClient(app=app, base_url="http://test") as ac:
-        response = await ac.get("/scripts")
+        response = await ac.get("/script/list")
     assert response.status_code == 200
-    assert response.json() == [
-        "trouble_brewing",
-        "sects_and_violets",
-        "bad_moon_rising",
-    ]
+    assert response.json() == {
+        "trouble_brewing": "Trouble Brewing",
+        "sects_and_violets": "Sects and Violets",
+        "bad_moon_rising": "Bad Moon Rising",
+    }

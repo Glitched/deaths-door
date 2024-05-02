@@ -7,6 +7,8 @@ from .sound_fx import SoundFX, SoundName
 
 app = FastAPI()
 
+# Initialize with a sample game to aid debugging
+# Also simplifies types, since this app doesn't make sense without a game
 game = Game(7, ScriptName.TROUBLE_BREWING)
 
 
