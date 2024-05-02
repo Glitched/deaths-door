@@ -1,115 +1,14 @@
 from fastapi import FastAPI
-from fastapi.exceptions import HTTPException
 
 from .game import Game
-from .script import Script, ScriptName
-from .sound_fx import SoundFX, SoundName
+from .routes import game, scripts, sounds
+from .script import ScriptName
 
 app = FastAPI()
+app.include_router(sounds.router)
+app.include_router(scripts.router)
+app.include_router(game.router)
 
 # Initialize with a sample game to aid debugging
 # Also simplifies types, since this app doesn't make sense without a game
 game = Game(7, ScriptName.TROUBLE_BREWING)
-
-
-@app.get("/scripts/list")
-async def read_scripts():
-    """Return a list of available scripts."""
-    return {x: str(x) for x in list(ScriptName)}
-
-
-@app.get("/scripts/{script_name}/role")
-async def read_roles(script_name: str):
-    """List the roles for the given script."""
-    script = Script.from_str(script_name)
-    if script is None:
-        raise HTTPException(status_code=404, detail="Script not found")
-
-    return script.roles
-
-
-# TODO: Can we consolidate this into the method above?
-# I don't have internet so I can't check the docs.
-@app.get("/scripts/{script}/role/{name}")
-async def read_role(script_name: str, role_name: str):
-    """Get a given role for a script."""
-    script = Script.from_str(script_name)
-    if script is None:
-        raise HTTPException(status_code=404, detail="Script not found")
-
-    return script.get_role(role_name)
-
-
-@app.get("/game/new/{str_script_name}/{player_count}")
-async def new_game(str_script_name: str, player_count: int):
-    """Start a new game."""
-    global game
-
-    script_name = ScriptName.from_str(str_script_name)
-    if script_name is None:
-        raise HTTPException(status_code=404, detail="Script not found")
-
-    game = Game(player_count, script_name)
-
-
-@app.get("/game/roles")
-async def get_game_roles():
-    """List the names of roles present in the current game."""
-    global game
-    return game.roles
-
-
-@app.get("/game/script")
-async def get_game_script():
-    """Return the name of the script for the current game."""
-    global game
-    return game.script.name.value
-
-
-@app.get("/game/open_slots")
-async def open_slots():
-    """Add the given role to the current game."""
-    global game
-    return game.get_open_slots()
-
-
-@app.get("/game/add_role/{role_name}")
-async def add_role(role_name: str):
-    """Add the given role to the current game."""
-    global game
-
-    try:
-        game.add_role(role_name)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=e.args) from e
-
-    return game.get_open_slots()
-
-
-@app.get("/game/remove_roll/{role_name}")
-async def remove_role(role_name: str):
-    """Sample API endpoint."""
-    global game
-
-    did_remove = game.remove_role(role_name)
-    if not did_remove:
-        raise HTTPException(status_code=404, detail="Role not in script")
-
-    return game.get_open_slots()
-
-
-@app.get("/sounds/play/{name}")
-async def play_sound(name: str):
-    """Sample API endpoint."""
-    sound_name = SoundName.from_str(name)
-
-    if sound_name is None:
-        raise HTTPException(status_code=404, detail="Sound not found")
-
-    SoundFX().play(sound_name)
-
-
-@app.get("/sounds/list")
-async def list_sounds():
-    """Return the names of available sounds to play."""
-    return list(SoundName)
