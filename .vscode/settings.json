@@ -6,5 +6,6 @@
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
-    "python.testing.cwd": "./backend"
+    "python.testing.cwd": "./backend",
+    "python.analysis.stubPath": "backend/typings"
 }

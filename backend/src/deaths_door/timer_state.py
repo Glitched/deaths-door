@@ -2,27 +2,33 @@ from __future__ import annotations
 
 import asyncio
 
+from .obs_manager import ObsManager
 from .sound_fx import SoundFX, SoundName
 
 
 class TimerState:
     """The state of the timer."""
 
-    is_running: bool = False
-    seconds: int = 0
+    is_running: bool = True
+    seconds: int = 10
     _lock: asyncio.Lock = asyncio.Lock()
+    _obs_manager: ObsManager
 
     def __init__(self):
         """Initialize the timer and start the on-tick loop."""
         loop = asyncio.get_event_loop()
 
         loop.create_task(self.handle_tick())
+        self._obs_manager = ObsManager(host="localhost", port=4455, password="dev_only")
+
+        self._obs_manager.setup_obs_scene()
 
     async def handle_tick(self):
         """Handle the tick of the timer."""
         while True:
             async with self._lock:
                 if self.is_running:
+                    self._obs_manager.update_timer(self.seconds)
                     if self.seconds > 0:
                         self.seconds -= 1
                     else:
