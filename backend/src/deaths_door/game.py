@@ -70,6 +70,8 @@ class Game:
         current_role_counts = self.get_current_role_counts()
         base = copy.copy(self.base_role_distribution)
 
+        # TODO: Support village idiot
+
         for role_name in self.roles:
             role = self.script.get_role(role_name)
             # role is known not to be none

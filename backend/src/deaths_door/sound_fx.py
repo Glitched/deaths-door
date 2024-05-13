@@ -11,6 +11,7 @@ class SoundName(str, Enum):
     DEATH = "death"
     ROOSTER = "rooster"
     ALARM = "alarm"
+    TIMER = "timer"
 
     @classmethod
     def from_str(cls, name: str) -> SoundName | None:
