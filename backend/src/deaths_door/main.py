@@ -13,3 +13,9 @@ app.include_router(timer.timer)
 # Initialize with a sample game to aid debugging
 # Also simplifies types, since this app doesn't make sense without a game
 game = Game(7, ScriptName.TROUBLE_BREWING)
+
+
+@app.get("/health")
+def health():
+    """Health check for the service to validate connection."""
+    return {"status": "ok", "version": "0.0.1"}
