@@ -32,6 +32,8 @@ async def add_seconds(seconds: int):
 async def start_timer(seconds: int | None = None):
     """Start the timer."""
     await state.set_is_running(True)
+    if seconds is not None:
+        await state.set_seconds(seconds)
 
 
 @timer.get("/timer/stop")
