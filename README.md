@@ -10,8 +10,11 @@ Currently, we're building out a representation of game state to provide sensible
 
 ## Running the backend
 
-1. Install packages with poetry
-2. Run the backend with poetry run
+1. Install the font [Help Me](https://www.dafont.com/help-me.font)
+2. Install and run OBS
+3. Enable the websocket and set the password in your environment as OBS_PASSWORD
+4. Install packages with poetry
+5. Run the backend with poetry run
 ```bash
 uvicorn src.deaths_door.main:app
 ```
