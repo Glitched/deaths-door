@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 
 from .obs_manager import ObsManager
 from .sound_fx import SoundFX, SoundName
@@ -9,7 +10,7 @@ from .sound_fx import SoundFX, SoundName
 class TimerState:
     """The state of the timer."""
 
-    is_running: bool = True
+    is_running: bool = False
     seconds: int = 10
     _lock: asyncio.Lock = asyncio.Lock()
     _obs_manager: ObsManager
@@ -19,7 +20,9 @@ class TimerState:
         loop = asyncio.get_event_loop()
 
         loop.create_task(self.handle_tick())
-        self._obs_manager = ObsManager(host="localhost", port=4455, password="dev_only")
+        self._obs_manager = ObsManager(
+            host="localhost", port=4455, password=os.getenv("OBS_PASSWORD", "dev_only")
+        )
 
         self._obs_manager.setup_obs_scene()
 
