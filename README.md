@@ -7,3 +7,12 @@ The backend component, a FastAPI app, is intended to be run on a computer poweri
 The frontend is a NextJS app intended to serve as a small remote, allowing us to trigger sound effects, OBS scenes, or advance the game state.
 
 Currently, we're building out a representation of game state to provide sensible options without large amounts of manual input. The goal is to operate as seamlessly as possible and add to the experience of playing the game rather than detract from it.
+
+## Running the backend
+
+1. Install packages with poetry
+2. Run the backend with poetry run
+```bash
+uvicorn src.deaths_door.main:app
+```
+You may add `--reload` to the command to have the server restart when you change the code.
