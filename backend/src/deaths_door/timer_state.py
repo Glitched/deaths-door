@@ -49,11 +49,12 @@ class TimerState:
         """Set the number of seconds left."""
         async with self._lock:
             self.seconds = new_value
+            if self.seconds < 0:
+                self.seconds = 0
 
-    async def add_seconds(self, new_value: int):
+    async def add_seconds(self, additional_seconds: int):
         """Add the given number of seconds to the timer."""
-        async with self._lock:
-            self.seconds += new_value
+        await self.set_seconds(self.seconds + additional_seconds)
 
     async def get_seconds(self):
         """Get the number of seconds left."""
