@@ -14,7 +14,10 @@ async def play_sound(name: str):
     if sound_name is None:
         raise HTTPException(status_code=404, detail="Sound not found")
 
-    SoundFX().play(sound_name)
+    try:
+        SoundFX().play(sound_name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to play sound") from e
 
 
 @router.get("/sounds/list")
