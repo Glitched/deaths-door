@@ -24,7 +24,10 @@ class TimerState:
             host="localhost", port=4455, password=os.getenv("OBS_PASSWORD", "dev_only")
         )
 
-        self._obs_manager.setup_obs_scene()
+        try:
+            self._obs_manager.setup_obs_scene()
+        except Exception as e:
+            print(f"Failed to setup OBS scene: {e}")
 
     async def handle_tick(self):
         """Handle the tick of the timer."""

@@ -35,7 +35,10 @@ class ObsManager:
     def __init__(self, host: str, port: int, password: str) -> None:
         """Create a new connection to OBS."""
         self.ws = obsws(host, port, password)
-        self.ws.connect()
+        try:
+            self.ws.connect()
+        except Exception as e:
+            print(f"Failed to connect to OBS: {e}")
         self.run_id = str(uuid.uuid4())
 
     def call(self, request: requests.Request) -> requests.Response:
@@ -140,13 +143,18 @@ class ObsManager:
 
     def update_timer(self, seconds: int) -> None:
         """Update the timer."""
-        # Set the text to the current time
-        minutes, seconds = divmod(seconds, 60)
-        time_text = f"{minutes:01}:{seconds:02}"
-        self.set_input_settings(TIMER_NAME, {"text": time_text})
+        try:
+            # Set the text to the current time
+            minutes, seconds = divmod(seconds, 60)
+            time_text = f"{minutes:01}:{seconds:02}"
+            self.set_input_settings(TIMER_NAME, {"text": time_text})
 
-        # Center the text
-        transform = self.get_scene_item_transform(self.input_id)
-        screen = self.get_video_settings()
-        x = (screen.baseWidth - transform.width) / 2
-        self.set_scene_item_transform(self.input_id, {"positionX": x})
+            # Center the text
+            transform = self.get_scene_item_transform(self.input_id)
+            screen = self.get_video_settings()
+            x = (screen.baseWidth - transform.width) / 2
+            self.set_scene_item_transform(self.input_id, {"positionX": x})
+
+        except Exception:  # noqa: S110
+            # If we're not connected to OBS, don't add log lines regularly
+            pass
