@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 
 from .game import Game
 from .routes import game, scripts, sounds, timer
@@ -19,3 +20,9 @@ game = Game(7, ScriptName.TROUBLE_BREWING)
 def health():
     """Health check for the service to validate connection."""
     return {"status": "ok", "version": "0.0.1"}
+
+
+@app.get("/favicon.ico")
+def favicon():
+    """Health check for the service to validate connection."""
+    return FileResponse("static/favicon.ico", media_type="image/x-icon")
