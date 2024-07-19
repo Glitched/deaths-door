@@ -35,3 +35,11 @@ class Character:
     def get_status_effects(self) -> list[StatusEffect]:
         """Return the character's status effects."""
         return self.status_effects
+
+    def normalize_name(self, name: str) -> str:
+        """Normalize a character name for comparisons."""
+        return name.lower().strip()
+
+    def is_named(self, name: str) -> bool:
+        """Check if the character matches the given name."""
+        return self.normalize_name(self.name) == self.normalize_name(name)
