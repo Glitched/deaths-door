@@ -30,7 +30,7 @@ class ScriptName(str, Enum):
                 return script
 
 
-class Category(str, Enum):
+class CharacterType(str, Enum):
     """The category of the role."""
 
     TOWNSFOLK = "townsfolk"
@@ -60,7 +60,7 @@ class Role(BaseModel):
 
     name: str
     description: str
-    category: Category
+    category: CharacterType
     alignment: Alignment
     changes: None | Changes = None
 

@@ -1,0 +1,14 @@
+from ...character import Character
+from ...script import Alignment, CharacterType
+
+
+class Saint(Character):
+    """Saint character."""
+
+    def __init__(self):
+        """Initialize the Saint character."""
+        self.name = "Saint"
+        self.description = "If you die by execution, you lose."
+        self.category = CharacterType.OUTSIDER
+        self.alignment = Alignment.GOOD
+        self.status_effects = []

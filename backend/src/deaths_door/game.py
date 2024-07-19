@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 
-from .script import Category, Script, ScriptName
+from .script import CharacterType, Script, ScriptName
 
 
 @dataclass
@@ -54,6 +54,7 @@ class Game:
             raise ValueError(f"Role not found: {role_name}")
 
         if role_name in self.roles:
+            # TODO: Handle village idiot or other roles that can be added multiple times
             raise ValueError(f"Role already in game: {role_name}")
 
         self.roles.add(role_name)
@@ -108,13 +109,13 @@ class Game:
                 raise ValueError("Invariant Broken: invalid role: {role_name}")
 
             match role.category:
-                case Category.TOWNSFOLK:
+                case CharacterType.TOWNSFOLK:
                     current_roles.townsfolk += 1
-                case Category.OUTSIDER:
+                case CharacterType.OUTSIDER:
                     current_roles.outsiders += 1
-                case Category.MINION:
+                case CharacterType.MINION:
                     current_roles.minions += 1
-                case Category.DEMON:
+                case CharacterType.DEMON:
                     current_roles.demons += 1
 
         return current_roles
