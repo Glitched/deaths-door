@@ -1,10 +1,24 @@
-from __future__ import annotations
+from pydantic import BaseModel
 
-from .script import Alignment, CharacterType
+from .alignment import Alignment
+from .changes import Changes
+from .character_type import CharacterType
+
+
+class CharacterOut(BaseModel):
+    """A character with only fields meant to be sent to the client."""
+
+    name: str
+    description: str
+    icon_path: str
+    alignment: Alignment
+    category: CharacterType
 
 
 class StatusEffect:
     """A status effect that can be applied to a character."""
+
+    name: str
 
 
 class Character:
@@ -15,6 +29,7 @@ class Character:
     category: CharacterType
     alignment: Alignment
     status_effects: list[StatusEffect]
+    changes: None | Changes
 
     def get_name(self) -> str:
         """Return the character's name."""
@@ -36,10 +51,24 @@ class Character:
         """Return the character's status effects."""
         return self.status_effects
 
-    def normalize_name(self, name: str) -> str:
+    def normalize(self, s: str) -> str:
         """Normalize a character name for comparisons."""
-        return name.lower().strip()
+        return s.lower().strip()
 
     def is_named(self, name: str) -> bool:
         """Check if the character matches the given name."""
-        return self.normalize_name(self.name) == self.normalize_name(name)
+        return self.normalize(self.name) == self.normalize(name)
+
+    def get_icon_path(self) -> str:
+        """Return the character's icon."""
+        return self.name.lower().replace(" ", "") + ".png"
+
+    def to_out(self) -> CharacterOut:
+        """Convert the character to a character out."""
+        return CharacterOut(
+            name=self.name,
+            description=self.description,
+            icon_path=self.get_icon_path(),
+            alignment=self.alignment,
+            category=self.category,
+        )

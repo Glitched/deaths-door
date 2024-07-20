@@ -3,7 +3,11 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 
-from .script import CharacterType, Script, ScriptName
+from .character import Character
+from .character_type import CharacterType
+from .player import Player
+from .script import Script, ScriptName
+from .scripts.registry import get_script_by_name
 
 
 @dataclass
@@ -36,7 +40,8 @@ class Game:
 
     script: Script
     base_role_distribution: RoleDistribution
-    roles: set[str]
+    included_roles: list[Character]
+    players: list[Player]
 
     def __init__(self, player_count: int, script_name: ScriptName) -> None:
         """Create a new game."""
@@ -45,26 +50,46 @@ class Game:
             raise ValueError(f"Invalid number of players: {player_count}")
         self.base_role_distribution = dist
 
-        self.script = Script(script_name)
-        self.roles = set()
+        script = get_script_by_name(script_name)
+        if script is None:
+            raise ValueError(f"Invalid script: {script_name}")
 
-    def add_role(self, role_name: str) -> None:
+        self.script = script
+        self.included_roles = []
+
+    def add__role(self, role_name: str) -> None:
         """Add a role to the game."""
-        if not self.script.has_role(role_name):
+        character = self.script.get_character(role_name)
+        if character is None:
             raise ValueError(f"Role not found: {role_name}")
 
-        if role_name in self.roles:
-            # TODO: Handle village idiot or other roles that can be added multiple times
-            raise ValueError(f"Role already in game: {role_name}")
+        for role in self.included_roles:
+            if (
+                role.get_category() == CharacterType.DEMON
+                and role.is_named(role_name)
+                and not role.is_named("legion")
+            ):
+                # TODO: Can any other roles not exist twice?
+                # TODO: Add exception for legion
+                raise ValueError(f"Role already in game: {role_name}")
 
-        self.roles.add(role_name)
+        self.included_roles.append(character)
+
+    def add_player_with_role(self, role_name: str) -> None:
+        """Add a player with a role to the game."""
+        character = next(
+            char for char in self.included_roles if char.is_named(role_name)
+        )
+        self.players.append(Player(character))
 
     def remove_role(self, role_name: str) -> None:
         """Remove a role from the game."""
-        if role_name not in self.roles:
-            raise ValueError(f"Role not in game: {role_name}")
+        for role in self.included_roles:
+            if role.is_named(role_name):
+                self.included_roles.remove(role)
+                return
 
-        self.roles.remove(role_name)
+        raise ValueError(f"Role not in game: {role_name}")
 
     def get_open_slots(self) -> RoleDistribution:
         """Get the number of roles that can be added to the game."""
@@ -73,11 +98,8 @@ class Game:
 
         # TODO: Support village idiot
 
-        for role_name in self.roles:
-            role = self.script.get_role(role_name)
-            # role is known not to be none
-            if role is None:
-                raise ValueError("Invariant Broken: invalid role: {role_name}")
+        for player in self.players:
+            role = player.character
 
             if role.changes is not None:
                 change = role.changes
@@ -102,11 +124,8 @@ class Game:
         """Get the number of roles that are currently in the game."""
         current_roles = RoleDistribution(townsfolk=0, outsiders=0, minions=0, demons=0)
 
-        for role_name in self.roles:
-            role = self.script.get_role(role_name)
-            # role is known not to be none
-            if role is None:
-                raise ValueError("Invariant Broken: invalid role: {role_name}")
+        for player in self.players:
+            role = player.character
 
             match role.category:
                 case CharacterType.TOWNSFOLK:

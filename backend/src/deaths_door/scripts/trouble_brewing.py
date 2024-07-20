@@ -22,7 +22,8 @@ from ..characters.trouble_brewing import (
     Virgin,
     Washerwoman,
 )
-from ..script import Script, ScriptName
+from ..script import Script
+from ..script_name import ScriptName
 
 
 class TroubleBrewing(Script):

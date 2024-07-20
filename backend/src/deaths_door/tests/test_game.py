@@ -8,7 +8,7 @@ from deaths_door.script import ScriptName
 async def test_add_role():
     """Asserts that we return a fun message."""
     game = Game(player_count=7, script_name=ScriptName.TROUBLE_BREWING)
-    game.add_role("imp")
+    game.add_player_with_role("imp")
     assert game.get_current_role_counts() == RoleDistribution(
         townsfolk=0, outsiders=0, minions=0, demons=1
     )
@@ -21,7 +21,7 @@ async def test_roles_remaining():
     assert game.get_open_slots() == RoleDistribution(
         townsfolk=5, outsiders=0, minions=1, demons=1
     )
-    game.add_role("imp")
+    game.add_player_with_role("imp")
     assert game.get_open_slots() == RoleDistribution(
         townsfolk=5, outsiders=0, minions=1, demons=0
     )
@@ -34,7 +34,7 @@ async def test_role_count_change():
     assert game.get_open_slots() == RoleDistribution(
         townsfolk=5, outsiders=0, minions=1, demons=1
     )
-    game.add_role("baron")
+    game.add_player_with_role("baron")
     assert game.get_open_slots() == RoleDistribution(
         townsfolk=3, outsiders=2, minions=0, demons=1
     )

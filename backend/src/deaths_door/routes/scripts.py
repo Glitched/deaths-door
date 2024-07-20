@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 from fastapi.exceptions import HTTPException
 
-from ..script import Script, ScriptName
+from ..script import ScriptName
+from ..scripts.registry import get_script_by_name
 
 router = APIRouter()
 
@@ -15,11 +16,11 @@ async def read_scripts():
 @router.get("/scripts/{script_name}/role")
 async def read_roles(script_name: str):
     """List the roles for the given script."""
-    script = Script.from_str(script_name)
+    script = get_script_by_name(script_name)
     if script is None:
         raise HTTPException(status_code=404, detail="Script not found")
 
-    return script.roles
+    return script.characters
 
 
 # TODO: Can we consolidate this into the method above?
@@ -27,8 +28,8 @@ async def read_roles(script_name: str):
 @router.get("/scripts/{script}/role/{name}")
 async def read_role(script_name: str, role_name: str):
     """Get a given role for a script."""
-    script = Script.from_str(script_name)
+    script = get_script_by_name(script_name)
     if script is None:
         raise HTTPException(status_code=404, detail="Script not found")
 
-    return script.get_role(role_name)
+    return script.get_character(role_name)

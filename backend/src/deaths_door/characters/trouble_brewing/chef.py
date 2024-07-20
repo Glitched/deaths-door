@@ -1,5 +1,6 @@
+from ...alignment import Alignment
 from ...character import Character
-from ...script import Alignment, CharacterType
+from ...character_type import CharacterType
 
 
 class Chef(Character):

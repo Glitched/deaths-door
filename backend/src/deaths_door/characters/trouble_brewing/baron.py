@@ -1,5 +1,7 @@
+from ...alignment import Alignment
+from ...changes import Changes
 from ...character import Character
-from ...script import Alignment, CharacterType
+from ...character_type import CharacterType
 
 
 class Baron(Character):
@@ -12,6 +14,4 @@ class Baron(Character):
         self.category = CharacterType.MINION
         self.alignment = Alignment.EVIL
         self.status_effects = []
-
-        # TODO: Implement changes
-        self.changes = {"outsider": 2}
+        self.changes = Changes(outsider=2)

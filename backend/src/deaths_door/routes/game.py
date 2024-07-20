@@ -23,7 +23,7 @@ async def new_game(str_script_name: str, player_count: int):
 async def get_game_roles():
     """List the names of roles present in the current game."""
     global game
-    return game.roles
+    return game.included_roles
 
 
 @router.get("/game/script")
@@ -46,7 +46,7 @@ async def add_role(role_name: str):
     global game
 
     try:
-        game.add_role(role_name)
+        game.add_player_with_role(role_name)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=e.args) from e
 

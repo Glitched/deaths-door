@@ -1,5 +1,5 @@
+from .alignment import Alignment
 from .character import Character, StatusEffect
-from .script import Alignment
 
 
 class Player:
