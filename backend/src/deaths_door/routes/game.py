@@ -1,3 +1,5 @@
+from asyncio import sleep
+
 from fastapi import APIRouter
 from fastapi.exceptions import HTTPException
 
@@ -7,6 +9,8 @@ from ..script import ScriptName
 router = APIRouter()
 
 game = Game.get_sample_game()
+
+should_reveal_roles = False
 
 
 @router.get("/game/new/{str_script_name}/{player_count}")
@@ -58,7 +62,16 @@ async def add_role(role_name: str):
 @router.get("/game/add_player")
 async def add_player():
     """Add a player to the current game."""
-    global game
+    global game, should_reveal_roles
+    count = 0
+    while not should_reveal_roles and count < 100:
+        await sleep(0.1)
+        count += 1
+
+    if count >= 100:
+        raise HTTPException(
+            status_code=408, detail="Timed out waiting for role assignment."
+        )
 
     try:
         player = game.add_player_with_random_role()
@@ -66,6 +79,24 @@ async def add_player():
         raise HTTPException(status_code=404, detail=e.args) from e
 
     return player.character.to_out()
+
+
+@router.get("/game/roles/reveal")
+async def reveal_roles():
+    """Reveal the roles for the current game."""
+    global should_reveal_roles
+
+    should_reveal_roles = True
+    return should_reveal_roles
+
+
+@router.get("/game/roles/hide")
+async def hide_roles():
+    """Hide the roles for the current game."""
+    global should_reveal_roles
+
+    should_reveal_roles = False
+    return should_reveal_roles
 
 
 @router.get("/game/remove_roll/{role_name}")
