@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seal Your Fate</title>
+    <style>
+        body, html {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            font-family: 'Courier New', Courier, monospace;
+            line-height: 1.4;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #game-container {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        #main-text {
+            font-size: 28px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        #role-image {
+            width: 200px;
+            height: 200px;
+            margin: 0px auto;
+            display: none;
+        }
+        #role {
+            font-family: 'Help Me';
+            font-size: 48px;
+            text-align: center;
+        }
+        #description {
+            font-size: 18px;
+            margin: 20px;
+            opacity: 0;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s forwards;
+        }
+        .fade-out {
+            animation: fadeOut 0.3s forwards;
+        }
+        .color-shift {
+            animation: colorShift 1s infinite alternate;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        @keyframes colorShift {
+            0% { color: #FF6262; }  /* Evil red */
+            100% { color: #62BDFF; }  /* Good blue */
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="main-text">SEAL YOUR FATE</div>
+        <img id="role-image"/>
+        <div id="role"></div>
+        <div id="description"></div>
+    </div>
+
+    <script>
+        const mainText = document.getElementById('main-text');
+        const roleImage = document.getElementById('role-image');
+        const roleText = document.getElementById('role');
+        const descriptionText = document.getElementById('description');
+
+        const copyColors = {
+            good: '#62BDFF',
+            evil: '#FF6262'
+        };
+
+        const roleColors = {
+            good: '#C0E5FF',
+            evil: '#FFCCCC'
+        };
+
+        let gameState = 'initial';
+
+        document.body.addEventListener('click', advanceGame);
+
+        function advanceGame() {
+            if (gameState === 'initial') {
+                gameState = 'loading';
+                mainText.classList.add('fade-out');
+                setTimeout(() => {
+                    mainText.textContent = 'Your role is';
+                    mainText.classList.remove('fade-out');
+                    mainText.classList.add('color-shift');
+                }, 300);
+                fetchRole();
+            }
+        }
+
+        function fetchRole() {
+            fetch('/game/add_player')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.text();
+                })
+                .then(role => {
+                    selectRole(JSON.parse(role));
+                })
+                .catch(error => {
+                    console.error('There was a problem with the fetch operation:', error.message);
+                    setTimeout(fetchRole, 1000);
+                });
+        }
+
+        function selectRole(selectedRole) {
+            if (!selectedRole) {
+                console.error('Unknown role:', selectRole);
+                return;
+            }
+
+            mainText.classList.remove('color-shift');
+            mainText.style.color = copyColors[selectedRole.alignment];
+            mainText.style.display = 'none';
+            roleText.textContent = selectedRole.name;
+            roleText.style.color = roleColors[selectedRole.alignment];
+            descriptionText.textContent = selectedRole.description;
+            descriptionText.style.color = copyColors[selectedRole.alignment];
+
+            if (selectedRole.icon_path) {
+                roleImage.src = '/static/icons/' + selectedRole.icon_path;
+                roleImage.style.display = 'block';
+            }
+
+            roleText.classList.add('fade-in');
+            descriptionText.classList.add('fade-in');
+            if (selectedRole.icon_path) roleImage.classList.add('fade-in');
+        }
+    </script>
+</body>
+</html>

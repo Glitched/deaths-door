@@ -6,6 +6,8 @@ from ..script import ScriptName
 
 router = APIRouter()
 
+game = Game.get_sample_game()
+
 
 @router.get("/game/new/{str_script_name}/{player_count}")
 async def new_game(str_script_name: str, player_count: int):
@@ -51,6 +53,19 @@ async def add_role(role_name: str):
         raise HTTPException(status_code=404, detail=e.args) from e
 
     return game.get_open_slots()
+
+
+@router.get("/game/add_player")
+async def add_player():
+    """Add a player to the current game."""
+    global game
+
+    try:
+        player = game.add_player_with_random_role()
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=e.args) from e
+
+    return player.character.to_out()
 
 
 @router.get("/game/remove_roll/{role_name}")

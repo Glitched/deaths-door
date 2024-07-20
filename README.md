@@ -16,3 +16,7 @@ Currently, we're building out a representation of game state to provide sensible
 4. Install packages via [poetry](https://python-poetry.org/docs/) with `poetry install`
 5. Entry the poetry virtual env with `poetry shell`
 6. Run the backend with `uvicorn src.deaths_door.main:app`. You may add `--reload` to the command to have the server restart when you change the code.
+
+## Frontend
+
+The NextJS frontend has been deprioritized in favor of a native iOS app, which is not yet published.

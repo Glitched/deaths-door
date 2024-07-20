@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import secrets
 from dataclasses import dataclass
 
 from .character import Character
@@ -56,31 +57,15 @@ class Game:
 
         self.script = script
         self.included_roles = []
+        self.players = []
 
-    def add__role(self, role_name: str) -> None:
+    def include_role(self, role_name: str) -> None:
         """Add a role to the game."""
         character = self.script.get_character(role_name)
         if character is None:
             raise ValueError(f"Role not found: {role_name}")
 
-        for role in self.included_roles:
-            if (
-                role.get_category() == CharacterType.DEMON
-                and role.is_named(role_name)
-                and not role.is_named("legion")
-            ):
-                # TODO: Can any other roles not exist twice?
-                # TODO: Add exception for legion
-                raise ValueError(f"Role already in game: {role_name}")
-
         self.included_roles.append(character)
-
-    def add_player_with_role(self, role_name: str) -> None:
-        """Add a player with a role to the game."""
-        character = next(
-            char for char in self.included_roles if char.is_named(role_name)
-        )
-        self.players.append(Player(character))
 
     def remove_role(self, role_name: str) -> None:
         """Remove a role from the game."""
@@ -90,6 +75,26 @@ class Game:
                 return
 
         raise ValueError(f"Role not in game: {role_name}")
+
+    def add_player_with_role(self, role_name: str) -> Player:
+        """Add a player with a role to the game."""
+        character = next(
+            char for char in self.included_roles if char.is_named(role_name)
+        )
+        player = Player(character)
+        self.players.append(player)
+        # TODO: Don't double assign roles
+        # TODO: Reveal another character instead of drunk
+        # TODO: Reveal the demon instead of the lunatic
+        return player
+
+    def add_player_with_random_role(self) -> Player:
+        """Add a player with a random role to the game."""
+        player = Player(secrets.choice(self.included_roles))
+        self.players.append(player)
+        # TODO: Reveal another character instead of drunk
+        # TODO: Reveal the demon instead of the lunatic
+        return player
 
     def get_open_slots(self) -> RoleDistribution:
         """Get the number of roles that can be added to the game."""
@@ -138,3 +143,21 @@ class Game:
                     current_roles.demons += 1
 
         return current_roles
+
+    @classmethod
+    def get_sample_game(cls) -> Game:
+        """Get a sample game."""
+        game = cls(12, ScriptName.TROUBLE_BREWING)
+        game.include_role("imp")
+        game.include_role("baron")
+        game.include_role("poisoner")
+        game.include_role("washerwoman")
+        game.include_role("librarian")
+        game.include_role("empath")
+        game.include_role("investigator")
+        game.include_role("mayor")
+        game.include_role("soldier")
+        game.include_role("slayer")
+        game.include_role("scarlet woman")
+        game.include_role("monk")
+        return game
