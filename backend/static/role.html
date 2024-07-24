@@ -134,7 +134,7 @@
 
         // Start periodic refresh of player names
         fetchPlayerNames();
-        refreshNamesIntervalId = setInterval(fetchPlayerNames, 1000);
+        refreshNamesIntervalId = setInterval(fetchPlayerNames, 10000);
 
         playerNamesSelect.addEventListener('change', (event) => {
             selectedPlayerName = event.target.value;
