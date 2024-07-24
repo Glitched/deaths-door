@@ -15,30 +15,36 @@ game = Game.get_sample_game()
 should_reveal_roles = False
 
 
-@router.get("/game/new/{str_script_name}")
-async def new_game(str_script_name: str):
+class NewGameRequest(BaseModel):
+    """Request to add a player to the game."""
+
+    script_name: str
+
+
+@router.post("/game/new/")
+async def new_game(req: NewGameRequest):
     """Start a new game."""
     global game
 
-    script_name = ScriptName.from_str(str_script_name)
+    script_name = ScriptName.from_str(req.script_name)
     if script_name is None:
         raise HTTPException(status_code=404, detail="Script not found")
 
     game = Game(script_name)
 
 
-@router.get("/game/roles")
-async def get_game_roles():
-    """List the names of roles present in the current game."""
-    global game
-    return game.included_roles
-
-
-@router.get("/game/script")
+@router.get("/game/script/name")
 async def get_game_script():
     """Return the name of the script for the current game."""
     global game
     return game.script.name.value
+
+
+@router.get("/game/script/listRoles")
+async def get_game_script_roles():
+    """Return the name of the script for the current game."""
+    global game
+    return [c.to_out() for c in game.script.characters]
 
 
 @router.get("/game/players/names")
@@ -76,6 +82,41 @@ async def add_player(req: AddPlayerRequest):
     return player.character.to_out()
 
 
+@router.get("/game/roles/list")
+async def get_game_roles():
+    """List the names of roles present in the current game."""
+    global game
+    return game.included_roles
+
+
+class AddRoleRequest(BaseModel):
+    """Request to add a role to the game."""
+
+    name: str
+
+
+@router.post("/game/roles/add")
+async def add_role(req: AddRoleRequest):
+    """Add a role to the current game."""
+    global game
+
+    game.include_role(req.name)
+
+
+class RemoveRoleRequest(BaseModel):
+    """Request to remove a role from the game."""
+
+    name: str
+
+
+@router.post("/game/roles/remove")
+async def remove_role(req: RemoveRoleRequest):
+    """Remove a role from the current game."""
+    global game
+
+    game.remove_role(req.name)
+
+
 @router.get("/game/roles/reveal")
 async def reveal_roles():
     """Reveal the roles for the current game."""
@@ -92,13 +133,3 @@ async def hide_roles():
 
     should_reveal_roles = False
     return should_reveal_roles
-
-
-@router.get("/game/remove_roll/{role_name}")
-async def remove_role(role_name: str):
-    """Sample API endpoint."""
-    global game
-
-    did_remove = game.remove_role(role_name)
-    if not did_remove:
-        raise HTTPException(status_code=404, detail="Role not in script")

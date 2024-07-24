@@ -62,12 +62,12 @@ class Game:
 
     def remove_role(self, role_name: str) -> None:
         """Remove a role from the game."""
-        for role in self.included_roles:
-            if role.is_named(role_name):
-                self.included_roles.remove(role)
-                return
-
-        raise ValueError(f"Role not in game: {role_name}")
+        try:
+            self.included_roles.remove(
+                next(role for role in self.included_roles if role.is_named(role_name))
+            )
+        except StopIteration as err:
+            raise ValueError(f"Role not in game: {role_name}") from err
 
     def add_player_with_role(self, name: str, role_name: str) -> Player:
         """Add a player with a role to the game."""
