@@ -2,19 +2,21 @@ from asyncio import sleep
 
 from fastapi import APIRouter
 from fastapi.exceptions import HTTPException
+from pydantic import BaseModel
 
 from ..game import Game
 from ..script import ScriptName
 
 router = APIRouter()
 
+# Initialize a sample game state for debugging purposes
 game = Game.get_sample_game()
 
 should_reveal_roles = False
 
 
-@router.get("/game/new/{str_script_name}/{player_count}")
-async def new_game(str_script_name: str, player_count: int):
+@router.get("/game/new/{str_script_name}")
+async def new_game(str_script_name: str):
     """Start a new game."""
     global game
 
@@ -22,7 +24,7 @@ async def new_game(str_script_name: str, player_count: int):
     if script_name is None:
         raise HTTPException(status_code=404, detail="Script not found")
 
-    game = Game(player_count, script_name)
+    game = Game(script_name)
 
 
 @router.get("/game/roles")
@@ -39,28 +41,21 @@ async def get_game_script():
     return game.script.name.value
 
 
-@router.get("/game/open_slots")
-async def open_slots():
-    """Add the given role to the current game."""
+@router.get("/game/players/names")
+async def get_game_players_names():
+    """Return the names of the players in the current game."""
     global game
-    return game.get_open_slots()
+    return [player.name for player in game.players]
 
 
-@router.get("/game/add_role/{role_name}")
-async def add_role(role_name: str):
-    """Add the given role to the current game."""
-    global game
+class AddPlayerRequest(BaseModel):
+    """Request to add a player to the game."""
 
-    try:
-        game.add_player_with_role(role_name)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=e.args) from e
-
-    return game.get_open_slots()
+    name: str
 
 
-@router.get("/game/add_player")
-async def add_player():
+@router.post("/game/add_player")
+async def add_player(req: AddPlayerRequest):
     """Add a player to the current game."""
     global game, should_reveal_roles
     count = 0
@@ -74,7 +69,7 @@ async def add_player():
         )
 
     try:
-        player = game.add_player_with_random_role()
+        player = game.add_player_with_random_role(req.name)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=e.args) from e
 
@@ -107,5 +102,3 @@ async def remove_role(role_name: str):
     did_remove = game.remove_role(role_name)
     if not did_remove:
         raise HTTPException(status_code=404, detail="Role not in script")
-
-    return game.get_open_slots()

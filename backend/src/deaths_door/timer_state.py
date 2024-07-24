@@ -10,7 +10,7 @@ from .sound_fx import SoundFX, SoundName
 class TimerState:
     """The state of the timer."""
 
-    is_running: bool = True
+    is_running: bool = False
     seconds: int = 5 * 60
     _lock: asyncio.Lock = asyncio.Lock()
     _obs_manager: ObsManager

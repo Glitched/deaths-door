@@ -5,14 +5,16 @@ from .character import Character, StatusEffect
 class Player:
     """Player represents a human playing the game."""
 
+    name: str
     character: Character
     alignment: Alignment
     current_status_effects: list[StatusEffect]
     is_alive: bool
     has_used_dead_vote: bool
 
-    def __init__(self, character: Character) -> None:
+    def __init__(self, name: str, character: Character) -> None:
         """Create a new player, getting their alignment from the Character."""
+        self.name = name
         self.character = character
         self.alignment = character.get_alignment()
         self.current_status_effects = []

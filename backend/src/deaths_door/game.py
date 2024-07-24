@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import copy
 import secrets
 from dataclasses import dataclass
 
 from .character import Character
-from .character_type import CharacterType
 from .player import Player
 from .script import Script, ScriptName
 from .scripts.registry import get_script_by_name
@@ -44,13 +42,8 @@ class Game:
     included_roles: list[Character]
     players: list[Player]
 
-    def __init__(self, player_count: int, script_name: ScriptName) -> None:
+    def __init__(self, script_name: ScriptName) -> None:
         """Create a new game."""
-        dist = distributions.get(player_count)
-        if dist is None:
-            raise ValueError(f"Invalid number of players: {player_count}")
-        self.base_role_distribution = dist
-
         script = get_script_by_name(script_name)
         if script is None:
             raise ValueError(f"Invalid script: {script_name}")
@@ -76,78 +69,30 @@ class Game:
 
         raise ValueError(f"Role not in game: {role_name}")
 
-    def add_player_with_role(self, role_name: str) -> Player:
+    def add_player_with_role(self, name: str, role_name: str) -> Player:
         """Add a player with a role to the game."""
         character = next(
             char for char in self.included_roles if char.is_named(role_name)
         )
-        player = Player(character)
+        player = Player(name, character)
         self.players.append(player)
         # TODO: Don't double assign roles
         # TODO: Reveal another character instead of drunk
         # TODO: Reveal the demon instead of the lunatic
         return player
 
-    def add_player_with_random_role(self) -> Player:
+    def add_player_with_random_role(self, name: str) -> Player:
         """Add a player with a random role to the game."""
-        player = Player(secrets.choice(self.included_roles))
+        player = Player(name, secrets.choice(self.included_roles))
         self.players.append(player)
         # TODO: Reveal another character instead of drunk
         # TODO: Reveal the demon instead of the lunatic
         return player
 
-    def get_open_slots(self) -> RoleDistribution:
-        """Get the number of roles that can be added to the game."""
-        current_role_counts = self.get_current_role_counts()
-        base = copy.copy(self.base_role_distribution)
-
-        # TODO: Support village idiot
-
-        for player in self.players:
-            role = player.character
-
-            if role.changes is not None:
-                change = role.changes
-                if change.outsider is not None:
-                    base.outsiders += change.outsider
-                    base.townsfolk -= change.outsider
-                if change.minion is not None:
-                    base.minions += change.minion
-                    base.townsfolk -= change.minion
-                if change.demon is not None:
-                    base.demons += change.demon
-                    base.townsfolk -= change.demon
-
-        return RoleDistribution(
-            townsfolk=base.townsfolk - current_role_counts.townsfolk,
-            outsiders=base.outsiders - current_role_counts.outsiders,
-            minions=base.minions - current_role_counts.minions,
-            demons=base.demons - current_role_counts.demons,
-        )
-
-    def get_current_role_counts(self) -> RoleDistribution:
-        """Get the number of roles that are currently in the game."""
-        current_roles = RoleDistribution(townsfolk=0, outsiders=0, minions=0, demons=0)
-
-        for player in self.players:
-            role = player.character
-
-            match role.category:
-                case CharacterType.TOWNSFOLK:
-                    current_roles.townsfolk += 1
-                case CharacterType.OUTSIDER:
-                    current_roles.outsiders += 1
-                case CharacterType.MINION:
-                    current_roles.minions += 1
-                case CharacterType.DEMON:
-                    current_roles.demons += 1
-
-        return current_roles
-
     @classmethod
     def get_sample_game(cls) -> Game:
         """Get a sample game."""
-        game = cls(12, ScriptName.TROUBLE_BREWING)
+        game = cls(ScriptName.TROUBLE_BREWING)
         game.include_role("imp")
         game.include_role("baron")
         game.include_role("poisoner")
@@ -160,4 +105,7 @@ class Game:
         game.include_role("slayer")
         game.include_role("scarlet woman")
         game.include_role("monk")
+
+        game.add_player_with_random_role("Ryan")
+        game.add_player_with_random_role("Yash")
         return game

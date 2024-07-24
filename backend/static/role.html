@@ -20,11 +20,11 @@
         #game-container {
             max-width: 500px;
             margin: 0 auto;
+            text-align: center;
         }
         #main-text {
             font-size: 28px;
             margin-bottom: 20px;
-            text-align: center;
         }
         #role-image {
             width: 200px;
@@ -35,7 +35,6 @@
         #role {
             font-family: 'Help Me';
             font-size: 48px;
-            text-align: center;
         }
         #description {
             font-size: 18px;
@@ -63,11 +62,32 @@
             0% { color: #FF6262; }  /* Evil red */
             100% { color: #62BDFF; }  /* Good blue */
         }
+        #name-selection, #name-confirmation {
+            margin-top: 20px;
+        }
+        select, button {
+            font-size: 16px;
+            padding: 5px 10px;
+            margin: 10px;
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #fff;
+        }
     </style>
 </head>
 <body>
     <div id="game-container">
         <div id="main-text">SEAL YOUR FATE</div>
+        <div id="name-selection">
+            <select id="player-names">
+                <option value="">Identify yourself</option>
+            </select>
+        </div>
+        <div id="name-confirmation" style="display: none;">
+            <p>Confirm your identity.</p>
+            <button id="confirm-name">Confirm</button>
+            <button id="change-name">Change</button>
+        </div>
         <img id="role-image"/>
         <div id="role"></div>
         <div id="description"></div>
@@ -78,6 +98,11 @@
         const roleImage = document.getElementById('role-image');
         const roleText = document.getElementById('role');
         const descriptionText = document.getElementById('description');
+        const nameSelection = document.getElementById('name-selection');
+        const nameConfirmation = document.getElementById('name-confirmation');
+        const playerNamesSelect = document.getElementById('player-names');
+        const confirmNameButton = document.getElementById('confirm-name');
+        const changeNameButton = document.getElementById('change-name');
 
         const copyColors = {
             good: '#62BDFF',
@@ -89,43 +114,74 @@
             evil: '#FFCCCC'
         };
 
-        let gameState = 'initial';
+        let gameState = 'name-selection';
+        let selectedPlayerName = '';
 
-        document.body.addEventListener('click', advanceGame);
-
-        function advanceGame() {
-            if (gameState === 'initial') {
-                gameState = 'loading';
-                mainText.classList.add('fade-out');
-                setTimeout(() => {
-                    mainText.textContent = 'Your role is';
-                    mainText.classList.remove('fade-out');
-                    mainText.classList.add('color-shift');
-                }, 300);
-                fetchRole();
-            }
+        function fetchPlayerNames() {
+            fetch('/game/players/names')
+                .then(response => response.json())
+                .then(names => {
+                    playerNamesSelect.innerHTML = '<option value="">Select your name</option>';
+                    names.forEach(name => {
+                        const option = document.createElement('option');
+                        option.value = name;
+                        option.textContent = name;
+                        playerNamesSelect.appendChild(option);
+                    });
+                })
+                .catch(error => console.error('Error fetching player names:', error));
         }
 
-        function fetchRole() {
-            fetch('/game/add_player')
+        fetchPlayerNames();
+
+        playerNamesSelect.addEventListener('change', (event) => {
+            selectedPlayerName = event.target.value;
+            if (selectedPlayerName) {
+                nameSelection.style.display = 'none';
+                mainText.textContent = selectedPlayerName
+                nameConfirmation.style.display = 'block';
+            }
+        });
+
+        confirmNameButton.addEventListener('click', () => {
+            nameConfirmation.style.display = 'none';
+            mainText.textContent = 'Your role is';
+            mainText.classList.add('color-shift');
+            fetchRole(selectedPlayerName);
+        });
+
+        changeNameButton.addEventListener('click', () => {
+            nameConfirmation.style.display = 'none';
+            nameSelection.style.display = 'block';
+            mainText.textContent = "Don't mess up again.";
+        });
+
+        function fetchRole(playerName) {
+            fetch('/game/add_player', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ name: playerName }),
+            })
                 .then(response => {
                     if (!response.ok) {
                         throw new Error('Network response was not ok');
                     }
-                    return response.text();
+                    return response.json();
                 })
                 .then(role => {
-                    selectRole(JSON.parse(role));
+                    selectRole(role);
                 })
                 .catch(error => {
                     console.error('There was a problem with the fetch operation:', error.message);
-                    setTimeout(fetchRole, 1000);
+                    setTimeout(() => fetchRole(playerName), 1000);
                 });
         }
 
         function selectRole(selectedRole) {
             if (!selectedRole) {
-                console.error('Unknown role:', selectRole);
+                console.error('Unknown role:', selectedRole);
                 return;
             }
 
@@ -146,6 +202,9 @@
             descriptionText.classList.add('fade-in');
             if (selectedRole.icon_path) roleImage.classList.add('fade-in');
         }
+
+        // Start periodic refresh of player names
+        setInterval(fetchPlayerNames, 1000);
     </script>
 </body>
 </html>
