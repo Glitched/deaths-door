@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import secrets
-from dataclasses import dataclass
 
 from .character import Character
 from .player import Player
@@ -9,36 +8,10 @@ from .script import Script, ScriptName
 from .scripts.registry import get_script_by_name
 
 
-@dataclass
-class RoleDistribution:
-    """How many of each role should be in the game."""
-
-    townsfolk: int
-    outsiders: int
-    minions: int
-    demons: int
-
-
-distributions = {
-    5: RoleDistribution(townsfolk=3, outsiders=0, minions=1, demons=1),
-    6: RoleDistribution(townsfolk=3, outsiders=1, minions=1, demons=1),
-    7: RoleDistribution(townsfolk=5, outsiders=0, minions=1, demons=1),
-    8: RoleDistribution(townsfolk=5, outsiders=1, minions=1, demons=1),
-    9: RoleDistribution(townsfolk=5, outsiders=2, minions=2, demons=1),
-    10: RoleDistribution(townsfolk=7, outsiders=0, minions=2, demons=1),
-    11: RoleDistribution(townsfolk=7, outsiders=1, minions=2, demons=1),
-    12: RoleDistribution(townsfolk=7, outsiders=2, minions=2, demons=1),
-    13: RoleDistribution(townsfolk=9, outsiders=0, minions=3, demons=1),
-    14: RoleDistribution(townsfolk=9, outsiders=1, minions=3, demons=1),
-    15: RoleDistribution(townsfolk=9, outsiders=2, minions=3, demons=1),
-}
-
-
 class Game:
     """Representation of the current game state."""
 
     script: Script
-    base_role_distribution: RoleDistribution
     included_roles: list[Character]
     players: list[Player]
 
@@ -88,6 +61,10 @@ class Game:
         # TODO: Reveal another character instead of drunk
         # TODO: Reveal the demon instead of the lunatic
         return player
+
+    def get_player_by_name(self, name: str) -> Player:
+        """Get a player by name."""
+        return next(player for player in self.players if player.name == name)
 
     @classmethod
     def get_sample_game(cls) -> Game:

@@ -132,7 +132,9 @@
                 .catch(error => console.error('Error fetching player names:', error));
         }
 
+        // Start periodic refresh of player names
         fetchPlayerNames();
+        refreshNamesIntervalId = setInterval(fetchPlayerNames, 1000);
 
         playerNamesSelect.addEventListener('change', (event) => {
             selectedPlayerName = event.target.value;
@@ -157,12 +159,12 @@
         });
 
         function fetchRole(playerName) {
-            fetch('/game/add_player', {
-                method: 'POST',
+            window.clearInterval(refreshNamesIntervalId);
+            fetch('/game/players/name/' + playerName, {
+                method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ name: playerName }),
             })
                 .then(response => {
                     if (!response.ok) {
@@ -175,7 +177,7 @@
                 })
                 .catch(error => {
                     console.error('There was a problem with the fetch operation:', error.message);
-                    setTimeout(() => fetchRole(playerName), 1000);
+                    setTimeout(() => fetchRole(playerName), 100);
                 });
         }
 
@@ -203,8 +205,6 @@
             if (selectedRole.icon_path) roleImage.classList.add('fade-in');
         }
 
-        // Start periodic refresh of player names
-        setInterval(fetchPlayerNames, 1000);
     </script>
 </body>
 </html>

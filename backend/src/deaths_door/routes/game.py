@@ -12,7 +12,7 @@ router = APIRouter()
 # Initialize a sample game state for debugging purposes
 game = Game.get_sample_game()
 
-should_reveal_roles = False
+should_reveal_roles = True
 
 
 class NewGameRequest(BaseModel):
@@ -21,7 +21,7 @@ class NewGameRequest(BaseModel):
     script_name: str
 
 
-@router.post("/game/new/")
+@router.post("/game/new")
 async def new_game(req: NewGameRequest):
     """Start a new game."""
     global game
@@ -40,7 +40,7 @@ async def get_game_script():
     return game.script.name.value
 
 
-@router.get("/game/script/listRoles")
+@router.get("/game/script/roles")
 async def get_game_script_roles():
     """Return the name of the script for the current game."""
     global game
@@ -52,34 +52,6 @@ async def get_game_players_names():
     """Return the names of the players in the current game."""
     global game
     return [player.name for player in game.players]
-
-
-class AddPlayerRequest(BaseModel):
-    """Request to add a player to the game."""
-
-    name: str
-
-
-@router.post("/game/add_player")
-async def add_player(req: AddPlayerRequest):
-    """Add a player to the current game."""
-    global game, should_reveal_roles
-    count = 0
-    while not should_reveal_roles and count < 100:
-        await sleep(0.1)
-        count += 1
-
-    if count >= 100:
-        raise HTTPException(
-            status_code=408, detail="Timed out waiting for role assignment."
-        )
-
-    try:
-        player = game.add_player_with_random_role(req.name)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=e.args) from e
-
-    return player.character.to_out()
 
 
 @router.get("/game/roles/list")
@@ -133,3 +105,43 @@ async def hide_roles():
 
     should_reveal_roles = False
     return should_reveal_roles
+
+
+class AddPlayerRequest(BaseModel):
+    """Request to add a player to the game."""
+
+    name: str
+
+
+@router.post("/game/players/add")
+async def add_player(req: AddPlayerRequest):
+    """Add a player to the current game."""
+    global game, should_reveal_roles
+    try:
+        player = game.add_player_with_random_role(req.name)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=e.args) from e
+
+    return player.character.to_out()
+
+
+@router.get("/game/players/name/{name}")
+async def get_player_role(name: str):
+    """Get the role of a player in the current game."""
+    global game, should_reveal_roles
+    count = 0
+    while not should_reveal_roles and count < 100:
+        await sleep(0.1)
+        count += 1
+
+    if count >= 100:
+        raise HTTPException(
+            status_code=408, detail="Timed out waiting for role assignment."
+        )
+
+    try:
+        player = game.get_player_by_name(name)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=e.args) from e
+
+    return player.character.to_out()
