@@ -118,7 +118,7 @@
         let selectedPlayerName = '';
 
         function fetchPlayerNames() {
-            fetch('/game/players/names')
+            fetch('/players/names')
                 .then(response => response.json())
                 .then(names => {
                     playerNamesSelect.innerHTML = '<option value="">Select your name</option>';
@@ -160,7 +160,7 @@
 
         function fetchRole(playerName) {
             window.clearInterval(refreshNamesIntervalId);
-            fetch('/game/players/name/' + playerName, {
+            fetch('/players/name/' + playerName, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',

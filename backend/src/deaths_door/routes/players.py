@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from ..alignment import Alignment
 from ..game import Game
 
-router = APIRouter()
+router = APIRouter(prefix="/players")
 
 # Initialize a sample game state for debugging purposes
 game = Game.get_sample_game()
@@ -21,7 +21,7 @@ class AddPlayerRequest(BaseModel):
     name: str
 
 
-@router.post("/players/add")
+@router.post("/add")
 async def add_player(req: AddPlayerRequest):
     """Add a player to the current game."""
     global game, should_reveal_roles
@@ -33,7 +33,7 @@ async def add_player(req: AddPlayerRequest):
     return player.to_out()
 
 
-@router.get("/players/list")
+@router.get("/list")
 async def list_players():
     """List the players in the current game."""
     global game
@@ -41,7 +41,7 @@ async def list_players():
     return [player.to_out() for player in game.players]
 
 
-@router.get("/players/name/{name}")
+@router.get("/name/{name}")
 async def get_player_role(name: str):
     """Get the role of a player in the current game."""
     global game, should_reveal_roles
@@ -70,7 +70,7 @@ class SetPlayerAliveRequest(BaseModel):
     is_alive: bool
 
 
-@router.post("/players/set_alive")
+@router.post("/set_alive")
 async def set_player_alive(req: SetPlayerAliveRequest):
     """Set the alive status of a player in the current game."""
     global game
@@ -87,7 +87,7 @@ class SetPlayerHasUsedDeadVoteRequest(BaseModel):
     has_used_dead_vote: bool
 
 
-@router.post("/players/set_has_used_dead_vote")
+@router.post("/set_has_used_dead_vote")
 async def set_player_has_used_dead_vote(req: SetPlayerHasUsedDeadVoteRequest):
     """Set the has used dead vote status of a player in the current game."""
     global game
@@ -104,7 +104,7 @@ class SetPlayerAlignmentRequest(BaseModel):
     alignment: Alignment
 
 
-@router.post("/players/set_alignment")
+@router.post("/set_alignment")
 async def set_player_alignment(req: SetPlayerAlignmentRequest):
     """Set the alignment of a player in the current game."""
     global game
@@ -121,7 +121,7 @@ class SwapCharacterRequest(BaseModel):
     name2: str
 
 
-@router.post("/players/swap_character")
+@router.post("/swap_character")
 async def swap_character(req: SwapCharacterRequest):
     """Swap the characters of two players in the current game."""
     global game
@@ -135,3 +135,35 @@ async def swap_character(req: SwapCharacterRequest):
     player2.set_character(character1)
 
     return player1.to_out()
+
+
+@router.get("/names")
+async def get_game_players_names():
+    """Return the names of the players in the current game."""
+    global game
+    return [player.name for player in game.players]
+
+
+@router.get("/visibility")
+async def get_roles_visibility():
+    """Get the visibility of the roles for the current game."""
+    global should_reveal_roles
+    return should_reveal_roles
+
+
+@router.get("/reveal")
+async def reveal_roles():
+    """Reveal the roles for the current game."""
+    global should_reveal_roles
+
+    should_reveal_roles = True
+    return should_reveal_roles
+
+
+@router.get("/hide")
+async def hide_roles():
+    """Hide the roles for the current game."""
+    global should_reveal_roles
+
+    should_reveal_roles = False
+    return should_reveal_roles

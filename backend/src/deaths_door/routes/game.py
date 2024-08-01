@@ -5,12 +5,10 @@ from pydantic import BaseModel
 from ..game import Game
 from ..script import ScriptName
 
-router = APIRouter()
+router = APIRouter(prefix="/game")
 
 # Initialize a sample game state for debugging purposes
 game = Game.get_sample_game()
-
-should_reveal_roles = True
 
 
 class NewGameRequest(BaseModel):
@@ -19,7 +17,7 @@ class NewGameRequest(BaseModel):
     script_name: str
 
 
-@router.post("/game/new")
+@router.post("/new")
 async def new_game(req: NewGameRequest):
     """Start a new game."""
     global game
@@ -31,97 +29,15 @@ async def new_game(req: NewGameRequest):
     game = Game(script_name)
 
 
-@router.get("/game/script/name")
+@router.get("/script/name")
 async def get_game_script():
     """Return the name of the script for the current game."""
     global game
     return game.script.name.value
 
 
-@router.get("/game/script/roles")
+@router.get("/script/roles")
 async def get_game_script_roles():
     """Return the name of the script for the current game."""
     global game
     return [c.to_out() for c in game.script.characters]
-
-
-@router.get("/game/players/names")
-async def get_game_players_names():
-    """Return the names of the players in the current game."""
-    global game
-    return [player.name for player in game.players]
-
-
-@router.get("/game/roles/list")
-async def get_game_roles():
-    """List the names of roles present in the current game."""
-    global game
-    return game.included_roles
-
-
-class AddRoleRequest(BaseModel):
-    """Request to add a role to the game."""
-
-    name: str
-
-
-@router.post("/game/roles/add")
-async def add_role(req: AddRoleRequest):
-    """Add a role to the current game."""
-    global game
-
-    game.include_role(req.name)
-
-
-class AddRoleMultiRequest(BaseModel):
-    """Request to add multiple roles to the game."""
-
-    names: list[str]
-
-
-@router.post("/game/roles/add/multi")
-async def add_role_multi(req: AddRoleMultiRequest):
-    """Add multiple roles to the current game."""
-    global game
-
-    for name in req.names:
-        game.include_role(name)
-
-
-class RemoveRoleRequest(BaseModel):
-    """Request to remove a role from the game."""
-
-    name: str
-
-
-@router.post("/game/roles/remove")
-async def remove_role(req: RemoveRoleRequest):
-    """Remove a role from the current game."""
-    global game
-
-    game.remove_role(req.name)
-
-
-@router.get("/game/roles/visibility")
-async def get_roles_visibility():
-    """Get the visibility of the roles for the current game."""
-    global should_reveal_roles
-    return should_reveal_roles
-
-
-@router.get("/game/roles/reveal")
-async def reveal_roles():
-    """Reveal the roles for the current game."""
-    global should_reveal_roles
-
-    should_reveal_roles = True
-    return should_reveal_roles
-
-
-@router.get("/game/roles/hide")
-async def hide_roles():
-    """Hide the roles for the current game."""
-    global should_reveal_roles
-
-    should_reveal_roles = False
-    return should_reveal_roles

@@ -2,13 +2,15 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .routes import game, scripts, sounds, timer
+from .routes import characters, game, players, scripts, sounds, timer
 
 app = FastAPI()
 app.include_router(sounds.router)
 app.include_router(scripts.router)
 app.include_router(game.router)
 app.include_router(timer.timer)
+app.include_router(players.router)
+app.include_router(characters.router)
 
 app.mount("/static/", StaticFiles(directory="static", html=True), name="static")
 
@@ -28,7 +30,7 @@ def favicon():
     return FileResponse("static/favicon.ico", media_type="image/x-icon")
 
 
-@app.get("/role")
+@app.get("/")
 def get_role():
     """Health check for the service to validate connection."""
     return FileResponse("static/role.html", media_type="text/html")

@@ -3,10 +3,10 @@ from fastapi.exceptions import HTTPException
 
 from ..sound_fx import SoundFX, SoundName
 
-router = APIRouter()
+router = APIRouter(prefix="/sounds")
 
 
-@router.get("/sounds/play/{name}")
+@router.get("/play/{name}")
 async def play_sound(name: str):
     """Sample API endpoint."""
     sound_name = SoundName.from_str(name)
@@ -20,7 +20,7 @@ async def play_sound(name: str):
         raise HTTPException(status_code=500, detail="Failed to play sound") from e
 
 
-@router.get("/sounds/list")
+@router.get("/list")
 async def list_sounds():
     """Return the names of available sounds to play."""
     return list(SoundName)
