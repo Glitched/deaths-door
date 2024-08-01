@@ -104,6 +104,13 @@ async def remove_role(req: RemoveRoleRequest):
     game.remove_role(req.name)
 
 
+@router.get("/game/roles/visibility")
+async def get_roles_visibility():
+    """Get the visibility of the roles for the current game."""
+    global should_reveal_roles
+    return should_reveal_roles
+
+
 @router.get("/game/roles/reveal")
 async def reveal_roles():
     """Reveal the roles for the current game."""

@@ -8,12 +8,19 @@ import pygame
 class SoundName(str, Enum):
     """The name of a script."""
 
+    # Player death
     DEATH = "death"
+    WILHELM = "wilhelm"
+
+    # Morning
     ROOSTER = "rooster"
     ALARM = "alarm"
     TIMER = "timer"
-    WILHELM = "wilhelm"
+
+    # Goodnight
     MUSIC_BOX = "music_box"
+
+    # Reveal
     DRUMROLL = "drumroll"
     DRAMA = "drama"
     SAD_TRUMPET = "sad_trumpet"
