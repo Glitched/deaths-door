@@ -1,5 +1,17 @@
+from pydantic import BaseModel
+
 from .alignment import Alignment
-from .character import Character, StatusEffect
+from .character import Character, CharacterOut, StatusEffect
+
+
+class PlayerOut(BaseModel):
+    """Player outgoing data."""
+
+    name: str
+    character: CharacterOut
+    alignment: Alignment
+    is_alive: bool
+    has_used_dead_vote: bool
 
 
 class Player:
@@ -28,3 +40,13 @@ class Player:
     def set_alignment(self, alignment: Alignment) -> None:
         """Mark a player as having used their dead vote."""
         self.alignment = alignment
+
+    def to_out(self) -> PlayerOut:
+        """Convert a player to outgoing data."""
+        return PlayerOut(
+            name=self.name,
+            character=self.character.to_out(),
+            alignment=self.alignment,
+            is_alive=self.is_alive,
+            has_used_dead_vote=self.has_used_dead_vote,
+        )

@@ -137,7 +137,15 @@ async def add_player(req: AddPlayerRequest):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=e.args) from e
 
-    return player.character.to_out()
+    return player.to_out()
+
+
+@router.get("/game/players/list")
+async def list_players():
+    """List the players in the current game."""
+    global game
+
+    return [player.to_out() for player in game.players]
 
 
 @router.get("/game/players/name/{name}")
@@ -159,4 +167,4 @@ async def get_player_role(name: str):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=e.args) from e
 
-    return player.character.to_out()
+    return player.to_out()
