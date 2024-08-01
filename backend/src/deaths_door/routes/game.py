@@ -75,6 +75,21 @@ async def add_role(req: AddRoleRequest):
     game.include_role(req.name)
 
 
+class AddRoleMultiRequest(BaseModel):
+    """Request to add multiple roles to the game."""
+
+    names: list[str]
+
+
+@router.post("/game/roles/add/multi")
+async def add_role_multi(req: AddRoleMultiRequest):
+    """Add multiple roles to the current game."""
+    global game
+
+    for name in req.names:
+        game.include_role(name)
+
+
 class RemoveRoleRequest(BaseModel):
     """Request to remove a role from the game."""
 
