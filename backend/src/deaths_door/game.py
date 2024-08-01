@@ -85,4 +85,6 @@ class Game:
 
         game.add_player_with_random_role("Ryan")
         game.add_player_with_random_role("Yash")
+        game.add_player_with_random_role("Other Ryan")
+        game.add_player_with_random_role("Other Yash")
         return game

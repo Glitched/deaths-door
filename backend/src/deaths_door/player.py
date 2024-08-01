@@ -33,13 +33,21 @@ class Player:
         self.is_alive = True
         self.has_used_dead_vote = False
 
-    def use_dead_vote(self) -> None:
+    def set_has_used_dead_vote(self, has_used_dead_vote: bool) -> None:
         """Mark a player as having used their dead vote."""
-        self.has_used_dead_vote = True
+        self.has_used_dead_vote = has_used_dead_vote
 
     def set_alignment(self, alignment: Alignment) -> None:
         """Mark a player as having used their dead vote."""
         self.alignment = alignment
+
+    def set_is_alive(self, is_alive: bool) -> None:
+        """Set the player's alive status."""
+        self.is_alive = is_alive
+
+    def set_character(self, character: Character) -> None:
+        """Set the player's character."""
+        self.character = character
 
     def to_out(self) -> PlayerOut:
         """Convert a player to outgoing data."""

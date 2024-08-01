@@ -1,5 +1,3 @@
-from asyncio import sleep
-
 from fastapi import APIRouter
 from fastapi.exceptions import HTTPException
 from pydantic import BaseModel
@@ -127,51 +125,3 @@ async def hide_roles():
 
     should_reveal_roles = False
     return should_reveal_roles
-
-
-class AddPlayerRequest(BaseModel):
-    """Request to add a player to the game."""
-
-    name: str
-
-
-@router.post("/game/players/add")
-async def add_player(req: AddPlayerRequest):
-    """Add a player to the current game."""
-    global game, should_reveal_roles
-    try:
-        player = game.add_player_with_random_role(req.name)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=e.args) from e
-
-    return player.to_out()
-
-
-@router.get("/game/players/list")
-async def list_players():
-    """List the players in the current game."""
-    global game
-
-    return [player.to_out() for player in game.players]
-
-
-@router.get("/game/players/name/{name}")
-async def get_player_role(name: str):
-    """Get the role of a player in the current game."""
-    global game, should_reveal_roles
-    count = 0
-    while not should_reveal_roles and count < 100:
-        await sleep(0.1)
-        count += 1
-
-    if count >= 100:
-        raise HTTPException(
-            status_code=408, detail="Timed out waiting for role assignment."
-        )
-
-    try:
-        player = game.get_player_by_name(name)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=e.args) from e
-
-    return player.to_out()
