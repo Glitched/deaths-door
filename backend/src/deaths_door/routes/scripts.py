@@ -20,7 +20,7 @@ async def read_roles(script_name: str):
     if script is None:
         raise HTTPException(status_code=404, detail="Script not found")
 
-    return script.characters
+    return [char.to_out() for char in script.characters]
 
 
 # TODO: Can we consolidate this into the method above?
@@ -32,4 +32,9 @@ async def read_role(script_name: str, role_name: str):
     if script is None:
         raise HTTPException(status_code=404, detail="Script not found")
 
-    return script.get_character(role_name)
+    char = script.get_character(role_name)
+
+    if char is None:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    return char.to_out()
