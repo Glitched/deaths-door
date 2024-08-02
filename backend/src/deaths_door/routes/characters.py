@@ -1,20 +1,15 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from ..game import Game
+from ..game_manager import get_current_game
 
 router = APIRouter(prefix="/characters")
 
-# Initialize a sample game state for debugging purposes
-game = Game.get_sample_game()
-
-should_reveal_roles = True
-
 
 @router.get("/list")
-async def get_game_roles():
+async def get_game_roles(game: Game = Depends(get_current_game)):
     """List the names of roles present in the current game."""
-    global game
     return game.included_roles
 
 
@@ -25,10 +20,8 @@ class AddRoleRequest(BaseModel):
 
 
 @router.post("/add")
-async def add_role(req: AddRoleRequest):
+async def add_role(req: AddRoleRequest, game: Game = Depends(get_current_game)):
     """Add a role to the current game."""
-    global game
-
     game.include_role(req.name)
 
 
@@ -39,10 +32,10 @@ class AddRoleMultiRequest(BaseModel):
 
 
 @router.post("/add/multi")
-async def add_role_multi(req: AddRoleMultiRequest):
+async def add_role_multi(
+    req: AddRoleMultiRequest, game: Game = Depends(get_current_game)
+):
     """Add multiple roles to the current game."""
-    global game
-
     for name in req.names:
         game.include_role(name)
 
@@ -54,8 +47,6 @@ class RemoveRoleRequest(BaseModel):
 
 
 @router.post("/remove")
-async def remove_role(req: RemoveRoleRequest):
+async def remove_role(req: RemoveRoleRequest, game: Game = Depends(get_current_game)):
     """Remove a role from the current game."""
-    global game
-
     game.remove_role(req.name)

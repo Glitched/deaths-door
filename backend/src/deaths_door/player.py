@@ -62,3 +62,7 @@ class Player:
             is_alive=self.is_alive,
             has_used_dead_vote=self.has_used_dead_vote,
         )
+
+    def __repr__(self) -> str:
+        """Return a string representation of the player."""
+        return f"Player({self.name}, {self.character.get_name()})"

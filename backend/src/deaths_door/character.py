@@ -72,3 +72,7 @@ class Character:
             alignment=self.alignment,
             category=self.category,
         )
+
+    def __repr__(self) -> str:
+        """Return a string representation of the character."""
+        return f"Character({self.name})"

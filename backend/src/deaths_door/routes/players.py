@@ -1,18 +1,14 @@
 from asyncio import sleep
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.exceptions import HTTPException
 from pydantic import BaseModel
 
 from ..alignment import Alignment
 from ..game import Game
+from ..game_manager import get_current_game
 
 router = APIRouter(prefix="/players")
-
-# Initialize a sample game state for debugging purposes
-game = Game.get_sample_game()
-
-should_reveal_roles = True
 
 
 class AddPlayerRequest(BaseModel):
@@ -22,9 +18,8 @@ class AddPlayerRequest(BaseModel):
 
 
 @router.post("/add")
-async def add_player(req: AddPlayerRequest):
+async def add_player(req: AddPlayerRequest, game: Game = Depends(get_current_game)):
     """Add a player to the current game."""
-    global game, should_reveal_roles
     try:
         player = game.add_player_with_random_role(req.name)
     except ValueError as e:
@@ -34,19 +29,16 @@ async def add_player(req: AddPlayerRequest):
 
 
 @router.get("/list")
-async def list_players():
+async def list_players(game: Game = Depends(get_current_game)):
     """List the players in the current game."""
-    global game
-
     return [player.to_out() for player in game.players]
 
 
 @router.get("/name/{name}")
-async def get_player_role(name: str):
+async def get_player_role(name: str, game: Game = Depends(get_current_game)):
     """Get the role of a player in the current game."""
-    global game, should_reveal_roles
     count = 0
-    while not should_reveal_roles and count < 100:
+    while not game.get_should_reveal_roles() and count < 100:
         await sleep(0.1)
         count += 1
 
@@ -71,10 +63,10 @@ class SetPlayerAliveRequest(BaseModel):
 
 
 @router.post("/set_alive")
-async def set_player_alive(req: SetPlayerAliveRequest):
+async def set_player_alive(
+    req: SetPlayerAliveRequest, game: Game = Depends(get_current_game)
+):
     """Set the alive status of a player in the current game."""
-    global game
-
     player = game.get_player_by_name(req.name)
     player.set_is_alive(req.is_alive)
     return player.to_out()
@@ -88,10 +80,10 @@ class SetPlayerHasUsedDeadVoteRequest(BaseModel):
 
 
 @router.post("/set_has_used_dead_vote")
-async def set_player_has_used_dead_vote(req: SetPlayerHasUsedDeadVoteRequest):
+async def set_player_has_used_dead_vote(
+    req: SetPlayerHasUsedDeadVoteRequest, game: Game = Depends(get_current_game)
+):
     """Set the has used dead vote status of a player in the current game."""
-    global game
-
     player = game.get_player_by_name(req.name)
     player.set_has_used_dead_vote(req.has_used_dead_vote)
     return player.to_out()
@@ -105,10 +97,10 @@ class SetPlayerAlignmentRequest(BaseModel):
 
 
 @router.post("/set_alignment")
-async def set_player_alignment(req: SetPlayerAlignmentRequest):
+async def set_player_alignment(
+    req: SetPlayerAlignmentRequest, game: Game = Depends(get_current_game)
+):
     """Set the alignment of a player in the current game."""
-    global game
-
     player = game.get_player_by_name(req.name)
     player.set_alignment(req.alignment)
     return player.to_out()
@@ -122,10 +114,10 @@ class SwapCharacterRequest(BaseModel):
 
 
 @router.post("/swap_character")
-async def swap_character(req: SwapCharacterRequest):
+async def swap_character(
+    req: SwapCharacterRequest, game: Game = Depends(get_current_game)
+):
     """Swap the characters of two players in the current game."""
-    global game
-
     player1 = game.get_player_by_name(req.name1)
     character1 = player1.character
     player2 = game.get_player_by_name(req.name2)
@@ -145,10 +137,10 @@ class RenamePlayerRequest(BaseModel):
 
 
 @router.post("/rename")
-async def rename_player(req: RenamePlayerRequest):
+async def rename_player(
+    req: RenamePlayerRequest, game: Game = Depends(get_current_game)
+):
     """Rename a player in the current game."""
-    global game
-
     player = game.get_player_by_name(req.name)
     player.set_name(req.new_name)
     return player.to_out()
@@ -161,40 +153,34 @@ class RemovePlayerRequest(BaseModel):
 
 
 @router.post("/remove")
-async def remove_player(req: RemovePlayerRequest):
+async def remove_player(
+    req: RemovePlayerRequest, game: Game = Depends(get_current_game)
+):
     """Remove a player from the current game."""
-    global game
-
     game.remove_player_by_name(req.name)
 
 
 @router.get("/names")
-async def get_game_players_names():
+async def get_game_players_names(game: Game = Depends(get_current_game)):
     """Return the names of the players in the current game."""
-    global game
     return [player.name for player in game.players]
 
 
 @router.get("/visibility")
-async def get_roles_visibility():
+async def get_roles_visibility(game: Game = Depends(get_current_game)):
     """Get the visibility of the roles for the current game."""
-    global should_reveal_roles
-    return should_reveal_roles
+    return game.get_should_reveal_roles()
 
 
-@router.get("/reveal")
-async def reveal_roles():
-    """Reveal the roles for the current game."""
-    global should_reveal_roles
+class SetRolesVisibilityRequest(BaseModel):
+    """Request to set the visibility of the roles for the current game."""
 
-    should_reveal_roles = True
-    return should_reveal_roles
+    should_reveal_roles: bool
 
 
-@router.get("/hide")
-async def hide_roles():
-    """Hide the roles for the current game."""
-    global should_reveal_roles
-
-    should_reveal_roles = False
-    return should_reveal_roles
+@router.post("/set_visibility")
+async def set_roles_visibility(
+    req: SetRolesVisibilityRequest, game: Game = Depends(get_current_game)
+):
+    """Set the visibility of the roles for the current game."""
+    return game.set_should_reveal_roles(req.should_reveal_roles)

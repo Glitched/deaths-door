@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import secrets
+from typing import Generator
 
 from .character import Character
+from .night_step import NightStep
 from .player import Player
 from .script import Script, ScriptName
 from .scripts.registry import get_script_by_name
@@ -14,6 +16,7 @@ class Game:
     script: Script
     included_roles: list[Character]
     players: list[Player]
+    should_reveal_roles: bool = False
 
     def __init__(self, script_name: ScriptName) -> None:
         """Create a new game."""
@@ -24,6 +27,15 @@ class Game:
         self.script = script
         self.included_roles = []
         self.players = []
+
+    def get_should_reveal_roles(self) -> bool:
+        """Get whether the roles should be revealed."""
+        return self.should_reveal_roles
+
+    def set_should_reveal_roles(self, should_reveal_roles: bool) -> bool:
+        """Set whether the roles should be revealed."""
+        self.should_reveal_roles = should_reveal_roles
+        return self.should_reveal_roles
 
     def include_role(self, role_name: str) -> None:
         """Add a role to the game."""
@@ -79,6 +91,32 @@ class Game:
         self.players.remove(player)
         self.included_roles.append(player.character)
 
+    def character_with_name_is_alive(self, name: str) -> bool:
+        """Check if a character with a given name is alive."""
+        for player in self.players:
+            if player.character.is_named(name):
+                if player.is_alive:
+                    print(player)
+                    return True
+        return False
+
+    def get_first_night_steps(self) -> Generator[NightStep, None, None]:
+        """Get the first night steps."""
+        return self.filter_steps(self.script.get_first_night_steps())
+
+    def get_other_night_steps(self) -> Generator[NightStep, None, None]:
+        """Get the other night steps."""
+        return self.filter_steps(self.script.get_other_night_steps())
+
+    def filter_steps(self, steps: list[NightStep]) -> Generator[NightStep, None, None]:
+        """Filter steps based on the current game state."""
+        for step in steps:
+            if step.always_show:
+                yield step
+            elif self.character_with_name_is_alive(step.name):
+                print(f"Showing step: {step.name}")
+                yield step
+
     @classmethod
     def get_sample_game(cls) -> Game:
         """Get a sample game."""
@@ -86,7 +124,7 @@ class Game:
         game.include_role("imp")
         game.include_role("baron")
         game.include_role("poisoner")
-        game.include_role("washerwoman")
+        game.include_role("recluse")
         game.include_role("librarian")
         game.include_role("empath")
         game.include_role("investigator")
@@ -100,4 +138,8 @@ class Game:
         game.add_player_with_random_role("Yash")
         game.add_player_with_random_role("Other Ryan")
         game.add_player_with_random_role("Other Yash")
+        game.add_player_with_random_role("Yet Another Ryan")
+        game.add_player_with_random_role("Yet Another Yash")
+        game.add_player_with_random_role("Even More Ryan")
+        game.add_player_with_random_role("Even More Yash")
         return game

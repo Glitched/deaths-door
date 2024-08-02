@@ -22,6 +22,7 @@ from ..characters.trouble_brewing import (
     Virgin,
     Washerwoman,
 )
+from ..night_step import NightStep
 from ..script import Script
 from ..script_name import ScriptName
 
@@ -29,31 +30,134 @@ from ..script_name import ScriptName
 class TroubleBrewing(Script):
     """Script class representing Trouble Brewing."""
 
-    def __init__(self) -> None:
-        """Create a new Trouble Brewing script."""
-        self.name = ScriptName.TROUBLE_BREWING
+    name = ScriptName.TROUBLE_BREWING
 
-        self.characters = [
-            Washerwoman(),
-            Librarian(),
-            Investigator(),
-            Chef(),
-            Empath(),
-            FortuneTeller(),
-            Undertaker(),
-            Monk(),
-            Ravenkeeper(),
-            Virgin(),
-            Slayer(),
-            Soldier(),
-            Mayor(),
-            Butler(),
-            Drunk(),
-            Recluse(),
-            Saint(),
-            Poisoner(),
-            Spy(),
-            Baron(),
-            ScarletWoman(),
-            Imp(),
-        ]
+    characters = [
+        Washerwoman(),
+        Librarian(),
+        Investigator(),
+        Chef(),
+        Empath(),
+        FortuneTeller(),
+        Undertaker(),
+        Monk(),
+        Ravenkeeper(),
+        Virgin(),
+        Slayer(),
+        Soldier(),
+        Mayor(),
+        Butler(),
+        Drunk(),
+        Recluse(),
+        Saint(),
+        Poisoner(),
+        Spy(),
+        Baron(),
+        ScarletWoman(),
+        Imp(),
+    ]
+
+    first_night_steps = [
+        NightStep(
+            name="Dusk",
+            description="Check that all eyes are closed. Some Travellers & Fabled act.",
+            always_show=True,
+        ),
+        NightStep(
+            name="Minion Info",
+            description="If there are 7 or more players, wake all Minions: "
+            + "Show the THIS IS THE DEMON token. Point to the Demon.",
+            always_show=True,
+        ),
+        NightStep(
+            name="Demon Info",
+            description="If there are 7 or more players, wake the Demon: "
+            + "Show the THESE ARE YOUR MINIONS token. Point to all Minions. "
+            + "Show the THESE CHARACTERS ARE NOT IN PLAY token. "
+            + "Show 3 not-in-play good character tokens.",
+            always_show=True,
+        ),
+        NightStep(name="Poisoner", description="The Poisoner chooses a player."),
+        NightStep(
+            name="Spy",
+            description="Show the Grimoire for as long as the Spy needs.",
+        ),
+        NightStep(
+            name="Washerwoman",
+            description="Show the Townsfolk character token. "
+            + "Point to both the TOWNSFOLK and WRONG players.",
+        ),
+        NightStep(
+            name="Librarian",
+            description="Show the Outsider character token. "
+            + "Point to both the OUTSIDER and WRONG players.",
+        ),
+        NightStep(
+            name="Investigator",
+            description="Show the Minion character token. "
+            + "Point to both the MINION and WRONG players.",
+        ),
+        NightStep(name="Chef", description="Give a finger signal."),
+        NightStep(name="Empath", description="Give a finger signal."),
+        NightStep(
+            name="Fortune Teller",
+            description="The Fortune Teller chooses 2 players. "
+            + "Nod if either is the Demon (or the RED HERRING).",
+        ),
+        NightStep(name="Butler", description="The Butler chooses a player."),
+        NightStep(
+            name="Dawn",
+            description="Wait a few seconds. Call for eyes open.",
+            always_show=True,
+        ),
+    ]
+
+    other_night_steps = [
+        NightStep(
+            name="Dusk",
+            description="Check that all eyes are closed. Some Travellers & Fabled act.",
+            always_show=True,
+        ),
+        NightStep(name="Poisoner", description="The Poisoner chooses a player."),
+        NightStep(name="Monk", description="The Monk chooses a player."),
+        NightStep(
+            name="Spy", description="Show the Grimoire for as long as the Spy needs."
+        ),
+        NightStep(
+            name="Scarlet Woman",
+            description="If the Scarlet Woman became the Imp today, "
+            + "show them the YOU ARE token, then the Imp token.",
+        ),
+        NightStep(
+            name="Imp",
+            description=(
+                "The Imp chooses a player. If the Imp chose themselves:\n"
+                "Replace 1 alive Minion token with a spare Imp token.\n"
+                "Put the old Imp to sleep. Wake the new Imp.\n"
+                "Show the YOU ARE token, then show the Imp token."
+            ),
+        ),
+        NightStep(
+            name="Ravenkeeper",
+            description="If the Ravenkeeper died tonight, "
+            + "the Ravenkeeper chooses a player. "
+            + "Show that player's character token.",
+        ),
+        NightStep(
+            name="Undertaker",
+            description="If a player was executed today, show their character token.",
+        ),
+        NightStep(name="Empath", description="Give a finger signal."),
+        NightStep(
+            name="Fortune Teller",
+            description="The Fortune Teller chooses 2 players. "
+            + "Nod if either is the Demon (or the RED HERRING).",
+        ),
+        NightStep(name="Butler", description="The Butler chooses a player."),
+        NightStep(
+            name="Dawn",
+            description="Wait a few seconds. "
+            + "Call for eyes open & immediately say who died.",
+            always_show=True,
+        ),
+    ]
