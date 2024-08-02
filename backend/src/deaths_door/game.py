@@ -75,7 +75,9 @@ class Game:
 
     def remove_player_by_name(self, name: str) -> None:
         """Remove a player by name."""
-        self.players.remove(self.get_player_by_name(name))
+        player = self.get_player_by_name(name)
+        self.players.remove(player)
+        self.included_roles.append(player.character)
 
     @classmethod
     def get_sample_game(cls) -> Game:
