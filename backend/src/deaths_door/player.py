@@ -33,6 +33,10 @@ class Player:
         self.is_alive = True
         self.has_used_dead_vote = False
 
+    def set_name(self, name: str) -> None:
+        """Set the player's name."""
+        self.name = name
+
     def set_has_used_dead_vote(self, has_used_dead_vote: bool) -> None:
         """Mark a player as having used their dead vote."""
         self.has_used_dead_vote = has_used_dead_vote

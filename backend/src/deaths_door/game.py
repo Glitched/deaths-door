@@ -44,27 +44,38 @@ class Game:
 
     def add_player_with_role(self, name: str, role_name: str) -> Player:
         """Add a player with a role to the game."""
+        if len(self.included_roles) == 0:
+            raise ValueError("No roles to assign")
+
         character = next(
             char for char in self.included_roles if char.is_named(role_name)
         )
-        player = Player(name, character)
-        self.players.append(player)
-        # TODO: Don't double assign roles
-        # TODO: Reveal another character instead of drunk
-        # TODO: Reveal the demon instead of the lunatic
-        return player
+
+        return self.add_player_with_character(name, character)
 
     def add_player_with_random_role(self, name: str) -> Player:
         """Add a player with a random role to the game."""
-        player = Player(name, secrets.choice(self.included_roles))
+        if len(self.included_roles) == 0:
+            raise ValueError("No roles to assign")
+
+        return self.add_player_with_character(name, secrets.choice(self.included_roles))
+
+    def add_player_with_character(self, name: str, character: Character) -> Player:
+        """Add a player with a character to the game."""
+        self.included_roles.remove(character)
+        # TODO: Handle lunatic/drunk
+
+        player = Player(name, character)
         self.players.append(player)
-        # TODO: Reveal another character instead of drunk
-        # TODO: Reveal the demon instead of the lunatic
         return player
 
     def get_player_by_name(self, name: str) -> Player:
         """Get a player by name."""
         return next(player for player in self.players if player.name == name)
+
+    def remove_player_by_name(self, name: str) -> None:
+        """Remove a player by name."""
+        self.players.remove(self.get_player_by_name(name))
 
     @classmethod
     def get_sample_game(cls) -> Game:

@@ -137,6 +137,37 @@ async def swap_character(req: SwapCharacterRequest):
     return player1.to_out()
 
 
+class RenamePlayerRequest(BaseModel):
+    """Request to rename a player in the game."""
+
+    name: str
+    new_name: str
+
+
+@router.post("/rename")
+async def rename_player(req: RenamePlayerRequest):
+    """Rename a player in the current game."""
+    global game
+
+    player = game.get_player_by_name(req.name)
+    player.set_name(req.new_name)
+    return player.to_out()
+
+
+class RemovePlayerRequest(BaseModel):
+    """Request to remove a player from the game."""
+
+    name: str
+
+
+@router.post("/remove")
+async def remove_player(req: RemovePlayerRequest):
+    """Remove a player from the current game."""
+    global game
+
+    game.remove_player_by_name(req.name)
+
+
 @router.get("/names")
 async def get_game_players_names():
     """Return the names of the players in the current game."""
