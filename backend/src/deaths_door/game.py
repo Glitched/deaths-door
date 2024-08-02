@@ -93,12 +93,10 @@ class Game:
 
     def character_with_name_is_alive(self, name: str) -> bool:
         """Check if a character with a given name is alive."""
-        for player in self.players:
-            if player.character.is_named(name):
-                if player.is_alive:
-                    print(player)
-                    return True
-        return False
+        return any(
+            player.character.is_named(name) or player.is_alive
+            for player in self.players
+        )
 
     def get_first_night_steps(self) -> Generator[NightStep, None, None]:
         """Get the first night steps."""
@@ -111,10 +109,7 @@ class Game:
     def filter_steps(self, steps: list[NightStep]) -> Generator[NightStep, None, None]:
         """Filter steps based on the current game state."""
         for step in steps:
-            if step.always_show:
-                yield step
-            elif self.character_with_name_is_alive(step.name):
-                print(f"Showing step: {step.name}")
+            if step.always_show or self.character_with_name_is_alive(step.name):
                 yield step
 
     @classmethod
