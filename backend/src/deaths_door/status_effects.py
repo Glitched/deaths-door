@@ -1,7 +1,21 @@
+from pydantic import BaseModel
+
+
+class StatusEffectOut(BaseModel):
+    """A collection of status effects."""
+
+    name: str
+    character_name: str
+
+
 class StatusEffect:
     """A status effect that can be applied to a character."""
 
     name: str
+
+    def to_out(self, character_name: str) -> StatusEffectOut:
+        """Convert the status effect to an output model."""
+        return StatusEffectOut(name=self.name, character_name=character_name)
 
 
 class IsTheDrunk(StatusEffect):

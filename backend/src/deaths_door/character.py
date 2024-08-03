@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from .alignment import Alignment
 from .changes import Changes
 from .character_type import CharacterType
+from .status_effects import StatusEffect, StatusEffectOut
 
 
 class CharacterOut(BaseModel):
@@ -13,12 +14,6 @@ class CharacterOut(BaseModel):
     icon_path: str
     alignment: Alignment
     category: CharacterType
-
-
-class StatusEffect:
-    """A status effect that can be applied to a character."""
-
-    name: str
 
 
 class Character:
@@ -47,10 +42,6 @@ class Character:
         """Return the character's category."""
         return self.category
 
-    def get_status_effects(self) -> list[StatusEffect]:
-        """Return the character's status effects."""
-        return self.status_effects
-
     def normalize(self, s: str) -> str:
         """Normalize a character name for comparisons."""
         return s.lower().strip()
@@ -62,6 +53,12 @@ class Character:
     def get_icon_path(self) -> str:
         """Return the character's icon."""
         return self.name.lower().replace(" ", "") + ".png"
+
+    def get_status_effects_out(self) -> list[StatusEffectOut]:
+        """Return the character's status effects."""
+        return [
+            status_effect.to_out(self.name) for status_effect in self.status_effects
+        ]
 
     def to_out(self) -> CharacterOut:
         """Convert the character to a character out."""

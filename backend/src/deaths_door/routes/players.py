@@ -21,6 +21,9 @@ class AddPlayerRequest(BaseModel):
 async def add_player(req: AddPlayerRequest, game: Game = Depends(get_current_game)):
     """Add a player to the current game."""
     try:
+        existing_player = game.get_player_by_name(req.name)
+        if existing_player:
+            raise ValueError(f"Player with name {req.name} already exists.")
         player = game.add_player_with_random_role(req.name)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=e.args) from e
@@ -184,3 +187,37 @@ async def set_roles_visibility(
 ):
     """Set the visibility of the roles for the current game."""
     return game.set_should_reveal_roles(req.should_reveal_roles)
+
+
+class AddStatusEffectRequest(BaseModel):
+    """Request to add a status effect to a player in the game."""
+
+    name: str
+    status_effect: str
+
+
+@router.post("/add_status_effect")
+async def add_status_effect(
+    req: AddStatusEffectRequest, game: Game = Depends(get_current_game)
+):
+    """Add a status effect to a player in the current game."""
+    player = game.get_player_by_name(req.name)
+    player.add_status_effect(req.status_effect)
+    return player.to_out()
+
+
+class RemoveStatusEffectRequest(BaseModel):
+    """Request to remove a status effect from a player in the game."""
+
+    name: str
+    status_effect: str
+
+
+@router.post("/remove_status_effect")
+async def remove_status_effect(
+    req: RemoveStatusEffectRequest, game: Game = Depends(get_current_game)
+):
+    """Remove a status effect from a player in the current game."""
+    player = game.get_player_by_name(req.name)
+    player.remove_status_effect(req.status_effect)
+    return player.to_out()

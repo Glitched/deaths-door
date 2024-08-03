@@ -41,3 +41,9 @@ async def get_game_script_roles(game: Game = Depends(get_current_game)):
 async def get_game_first_night_steps(game: Game = Depends(get_current_game)):
     """Return the first night steps."""
     return game.get_first_night_steps()
+
+
+@router.get("/status_effects")
+async def get_game_status_effects(game: Game = Depends(get_current_game)):
+    """Return the status effects for the current game."""
+    return game.get_status_effects()

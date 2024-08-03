@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+from itertools import chain
 from typing import Generator
 
 from .character import Character
@@ -8,6 +9,7 @@ from .night_step import NightStep
 from .player import Player
 from .script import Script, ScriptName
 from .scripts.registry import get_script_by_name
+from .status_effects import StatusEffectOut
 
 
 class Game:
@@ -111,6 +113,17 @@ class Game:
         for step in steps:
             if step.always_show or self.character_with_name_is_alive(step.name):
                 yield step
+
+    def get_status_effects(self) -> list[StatusEffectOut]:
+        """Get the status effects in the game."""
+        effects = list(
+            chain.from_iterable(
+                player.character.get_status_effects_out() for player in self.players
+            )
+        )
+        # Sort by character name so list order is consistent
+        effects.sort(key=lambda x: x.character_name)
+        return effects
 
     @classmethod
     def get_sample_game(cls) -> Game:

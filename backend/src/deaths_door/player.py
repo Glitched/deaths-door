@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
 from .alignment import Alignment
-from .character import Character, CharacterOut, StatusEffect
+from .character import Character, CharacterOut
 
 
 class PlayerOut(BaseModel):
@@ -12,6 +12,7 @@ class PlayerOut(BaseModel):
     alignment: Alignment
     is_alive: bool
     has_used_dead_vote: bool
+    status_effects: list[str]
 
 
 class Player:
@@ -20,18 +21,15 @@ class Player:
     name: str
     character: Character
     alignment: Alignment
-    current_status_effects: list[StatusEffect]
-    is_alive: bool
-    has_used_dead_vote: bool
+    is_alive: bool = True
+    has_used_dead_vote: bool = False
+    status_effects: list[str] = []
 
     def __init__(self, name: str, character: Character) -> None:
         """Create a new player, getting their alignment from the Character."""
         self.name = name
         self.character = character
         self.alignment = character.get_alignment()
-        self.current_status_effects = []
-        self.is_alive = True
-        self.has_used_dead_vote = False
 
     def set_name(self, name: str) -> None:
         """Set the player's name."""
@@ -53,6 +51,14 @@ class Player:
         """Set the player's character."""
         self.character = character
 
+    def add_status_effect(self, status_effect: str) -> None:
+        """Add a status effect to the player."""
+        self.status_effects.append(status_effect)
+
+    def remove_status_effect(self, status_effect: str) -> None:
+        """Remove a status effect from the player."""
+        self.status_effects.remove(status_effect)
+
     def to_out(self) -> PlayerOut:
         """Convert a player to outgoing data."""
         return PlayerOut(
@@ -61,6 +67,7 @@ class Player:
             alignment=self.alignment,
             is_alive=self.is_alive,
             has_used_dead_vote=self.has_used_dead_vote,
+            status_effects=self.status_effects,
         )
 
     def __repr__(self) -> str:
