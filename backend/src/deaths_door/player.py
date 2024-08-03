@@ -23,13 +23,14 @@ class Player:
     alignment: Alignment
     is_alive: bool = True
     has_used_dead_vote: bool = False
-    status_effects: list[str] = []
+    status_effects: list[str]
 
     def __init__(self, name: str, character: Character) -> None:
         """Create a new player, getting their alignment from the Character."""
         self.name = name
         self.character = character
         self.alignment = character.get_alignment()
+        self.status_effects = []
 
     def set_name(self, name: str) -> None:
         """Set the player's name."""

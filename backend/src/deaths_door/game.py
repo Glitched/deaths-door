@@ -145,12 +145,17 @@ class Game:
         game.include_role("scarlet woman")
         game.include_role("monk")
 
-        game.add_player_with_random_role("Ryan")
-        game.add_player_with_random_role("Yash")
+        ryan = game.add_player_with_random_role("Ryan")
+        yash = game.add_player_with_random_role("Yash")
         game.add_player_with_random_role("Other Ryan")
         game.add_player_with_random_role("Other Yash")
         game.add_player_with_random_role("Yet Another Ryan")
         game.add_player_with_random_role("Yet Another Yash")
         game.add_player_with_random_role("Even More Ryan")
         game.add_player_with_random_role("Even More Yash")
+
+        yash.add_status_effect("Drunk")
+        yash.add_status_effect("No Ability")
+        ryan.add_status_effect("Is The Demon")
+
         return game
