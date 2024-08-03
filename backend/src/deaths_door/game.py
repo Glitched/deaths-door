@@ -83,13 +83,16 @@ class Game:
         self.players.append(player)
         return player
 
-    def get_player_by_name(self, name: str) -> Player:
+    def get_player_by_name(self, name: str) -> Player | None:
         """Get a player by name."""
-        return next(player for player in self.players if player.name == name)
+        return next((player for player in self.players if player.name == name), None)
 
     def remove_player_by_name(self, name: str) -> None:
         """Remove a player by name."""
         player = self.get_player_by_name(name)
+        if player is None:
+            raise ValueError(f"Player not found: {name}")
+
         self.players.remove(player)
         self.included_roles.append(player.character)
 

@@ -50,10 +50,9 @@ async def get_player_role(name: str, game: Game = Depends(get_current_game)):
             status_code=408, detail="Timed out waiting for role assignment."
         )
 
-    try:
-        player = game.get_player_by_name(name)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=e.args) from e
+    player = game.get_player_by_name(name)
+    if player is None:
+        raise HTTPException(status_code=404, detail=f"Player not found: {name}")
 
     return player.to_out()
 
@@ -71,6 +70,9 @@ async def set_player_alive(
 ):
     """Set the alive status of a player in the current game."""
     player = game.get_player_by_name(req.name)
+    if player is None:
+        raise HTTPException(status_code=404, detail=f"Player not found: {req.name}")
+
     player.set_is_alive(req.is_alive)
     return player.to_out()
 
@@ -88,6 +90,9 @@ async def set_player_has_used_dead_vote(
 ):
     """Set the has used dead vote status of a player in the current game."""
     player = game.get_player_by_name(req.name)
+    if player is None:
+        raise HTTPException(status_code=404, detail=f"Player not found: {req.name}")
+
     player.set_has_used_dead_vote(req.has_used_dead_vote)
     return player.to_out()
 
@@ -105,6 +110,9 @@ async def set_player_alignment(
 ):
     """Set the alignment of a player in the current game."""
     player = game.get_player_by_name(req.name)
+    if player is None:
+        raise HTTPException(status_code=404, detail=f"Player not found: {req.name}")
+
     player.set_alignment(req.alignment)
     return player.to_out()
 
@@ -122,8 +130,13 @@ async def swap_character(
 ):
     """Swap the characters of two players in the current game."""
     player1 = game.get_player_by_name(req.name1)
+    if player1 is None:
+        raise HTTPException(status_code=404, detail=f"Player not found: {req.name1}")
     character1 = player1.character
+
     player2 = game.get_player_by_name(req.name2)
+    if player2 is None:
+        raise HTTPException(status_code=404, detail=f"Player not found: {req.name2}")
     character2 = player2.character
 
     player1.set_character(character2)
@@ -145,6 +158,9 @@ async def rename_player(
 ):
     """Rename a player in the current game."""
     player = game.get_player_by_name(req.name)
+    if player is None:
+        raise HTTPException(status_code=404, detail=f"Player not found: {req.name}")
+
     player.set_name(req.new_name)
     return player.to_out()
 
@@ -202,6 +218,9 @@ async def add_status_effect(
 ):
     """Add a status effect to a player in the current game."""
     player = game.get_player_by_name(req.name)
+    if player is None:
+        raise HTTPException(status_code=404, detail=f"Player not found: {req.name}")
+
     player.add_status_effect(req.status_effect)
     return player.to_out()
 
@@ -219,5 +238,8 @@ async def remove_status_effect(
 ):
     """Remove a status effect from a player in the current game."""
     player = game.get_player_by_name(req.name)
+    if player is None:
+        raise HTTPException(status_code=404, detail=f"Player not found: {req.name}")
+
     player.remove_status_effect(req.status_effect)
     return player.to_out()
