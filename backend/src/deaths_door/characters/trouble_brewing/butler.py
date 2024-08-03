@@ -1,6 +1,7 @@
 from ...alignment import Alignment
 from ...character import Character
 from ...character_type import CharacterType
+from ...status_effects import ButlersMaster
 
 
 class Butler(Character):
@@ -16,4 +17,4 @@ class Butler(Character):
         )
         self.category = CharacterType.OUTSIDER
         self.alignment = Alignment.GOOD
-        self.status_effects = []
+        self.status_effects = [ButlersMaster()]

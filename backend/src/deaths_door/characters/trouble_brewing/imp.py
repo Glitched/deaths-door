@@ -1,6 +1,7 @@
 from ...alignment import Alignment
 from ...character import Character
 from ...character_type import CharacterType
+from ...status_effects import Dead, IsTheDrunk
 
 
 class Imp(Character):
@@ -15,4 +16,5 @@ class Imp(Character):
         )
         self.category = CharacterType.DEMON
         self.alignment = Alignment.EVIL
-        self.status_effects = []
+        # Imp includes Drunk because imp is always present in the game
+        self.status_effects = [IsTheDrunk(), Dead()]

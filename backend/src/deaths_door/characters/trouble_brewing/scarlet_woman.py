@@ -1,6 +1,7 @@
 from ...alignment import Alignment
 from ...character import Character
 from ...character_type import CharacterType
+from ...status_effects import IsTheDemon
 
 
 class ScarletWoman(Character):
@@ -15,4 +16,4 @@ class ScarletWoman(Character):
         )
         self.category = CharacterType.MINION
         self.alignment = Alignment.EVIL
-        self.status_effects = []
+        self.status_effects = [IsTheDemon()]

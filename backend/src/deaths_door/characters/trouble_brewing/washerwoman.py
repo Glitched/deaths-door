@@ -1,6 +1,7 @@
 from ...alignment import Alignment
 from ...character import Character
 from ...character_type import CharacterType
+from ...status_effects import WasherwomanTownsfolk, WasherwomanWrong
 
 
 class Washerwoman(Character):
@@ -14,4 +15,4 @@ class Washerwoman(Character):
         )
         self.category = CharacterType.TOWNSFOLK
         self.alignment = Alignment.GOOD
-        self.status_effects = []
+        self.status_effects = [WasherwomanTownsfolk(), WasherwomanWrong()]

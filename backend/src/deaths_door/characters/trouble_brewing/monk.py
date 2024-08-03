@@ -1,6 +1,7 @@
 from ...alignment import Alignment
 from ...character import Character
 from ...character_type import CharacterType
+from ...status_effects import Safe
 
 
 class Monk(Character):
@@ -15,4 +16,4 @@ class Monk(Character):
         )
         self.category = CharacterType.TOWNSFOLK
         self.alignment = Alignment.GOOD
-        self.status_effects = []
+        self.status_effects = [Safe()]

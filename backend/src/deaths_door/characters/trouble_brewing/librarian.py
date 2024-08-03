@@ -1,6 +1,7 @@
 from ...alignment import Alignment
 from ...character import Character
 from ...character_type import CharacterType
+from ...status_effects import LibrarianOutsider, LibrarianWrong
 
 
 class Librarian(Character):
@@ -15,4 +16,4 @@ class Librarian(Character):
         )
         self.category = CharacterType.TOWNSFOLK
         self.alignment = Alignment.GOOD
-        self.status_effects = []
+        self.status_effects = [LibrarianOutsider(), LibrarianWrong()]
