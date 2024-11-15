@@ -158,4 +158,7 @@ class Game:
         yash.add_status_effect("No Ability")
         ryan.add_status_effect("Is The Demon")
 
+        yash.set_is_alive(False)
+        yash.set_has_used_dead_vote(True)
+
         return game

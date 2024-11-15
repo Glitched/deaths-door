@@ -6,3 +6,4 @@ class Alignment(str, Enum):
 
     GOOD = "good"
     EVIL = "evil"
+    UNKNOWN = "unknown"

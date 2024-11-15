@@ -9,6 +9,7 @@ class Script:
     """Represent a Blood on the Clocktower script."""
 
     characters: list[Character]
+    travelers: list[Character]
     name: ScriptName
     first_night_steps: list[NightStep]
     other_night_steps: list[NightStep]

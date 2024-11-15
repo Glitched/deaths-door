@@ -25,6 +25,13 @@ from ..characters.trouble_brewing import (
 from ..night_step import NightStep
 from ..script import Script
 from ..script_name import ScriptName
+from ..travelers.trouble_brewing import (
+    Beggar,
+    Bureaucrat,
+    Gunslinger,
+    Scapegoat,
+    Thief,
+)
 
 
 class TroubleBrewing(Script):
@@ -55,6 +62,14 @@ class TroubleBrewing(Script):
         Baron(),
         ScarletWoman(),
         Imp(),
+    ]
+
+    travelers = [
+        Thief(),
+        Bureaucrat(),
+        Gunslinger(),
+        Scapegoat(),
+        Beggar(),
     ]
 
     first_night_steps = [

@@ -41,7 +41,8 @@ class ObsManager:
             print(f"Failed to connect to OBS: {e}")
         self.run_id = str(uuid.uuid4())
 
-    def call(self, request: requests.Request) -> requests.Response:
+    # Sadly, the OBS websocket API is not typed.
+    def call(self, request: Any) -> Any:
         """Call a request."""
         return self.ws.call(request)
 

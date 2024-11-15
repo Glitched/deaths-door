@@ -8,3 +8,4 @@ class CharacterType(str, Enum):
     OUTSIDER = "outsider"
     MINION = "minion"
     DEMON = "demon"
+    TRAVELER = "traveler"
