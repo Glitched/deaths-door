@@ -83,6 +83,21 @@ class Game:
         self.players.append(player)
         return player
 
+    def add_player_as_traveler(self, name: str, traveler_name: str) -> Player:
+        """Add a player as a traveler to the game."""
+        # Check if traveler is valid and unassigned
+        travelers = self.get_unclaimed_travelers()
+        traveler = next(
+            (traveler for traveler in travelers if traveler.name == traveler_name), None
+        )
+
+        if traveler is None:
+            raise ValueError(f"Traveler not found or in game: {traveler_name}")
+
+        player = Player(name, traveler)
+        self.players.append(player)
+        return player
+
     def get_player_by_name(self, name: str) -> Player | None:
         """Get a player by name."""
         return next((player for player in self.players if player.name == name), None)
@@ -127,6 +142,16 @@ class Game:
         # Sort by character name so list order is consistent
         effects.sort(key=lambda x: x.character_name)
         return effects
+
+    def get_unclaimed_travelers(self) -> list[Character]:
+        """Get the unclaimed travelers."""
+        all_travelers = self.script.travelers
+        claimed_travelers = [player.character.name for player in self.players]
+        return [
+            traveler
+            for traveler in all_travelers
+            if traveler.name not in claimed_travelers
+        ]
 
     @classmethod
     def get_sample_game(cls) -> Game:

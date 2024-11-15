@@ -31,6 +31,30 @@ async def add_player(req: AddPlayerRequest, game: Game = Depends(get_current_gam
     return player.to_out()
 
 
+class AddTravelerRequest(BaseModel):
+    """Request to add a player to the game as a traveler."""
+
+    name: str
+    traveler: str
+
+
+@router.post("/add_traveler")
+async def add_player_as_traveler(
+    req: AddTravelerRequest, game: Game = Depends(get_current_game)
+):
+    """Add a player to the current game as a traveler."""
+    try:
+        # Check if the player already exists
+        existing_player = game.get_player_by_name(req.name)
+        if existing_player:
+            raise ValueError(f"Player with name {req.name} already exists.")
+        player = game.add_player_as_traveler(req.name, req.traveler)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=e.args) from e
+
+    return player.to_out()
+
+
 @router.get("/list")
 async def list_players(game: Game = Depends(get_current_game)):
     """List the players in the current game."""

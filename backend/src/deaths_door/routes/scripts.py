@@ -23,6 +23,16 @@ async def read_roles(script_name: str):
     return [char.to_out() for char in script.characters]
 
 
+@router.get("/{script_name}/travelers")
+async def read_travelers(script_name: str):
+    """List the travelers for the given script."""
+    script = get_script_by_name(script_name)
+    if script is None:
+        raise HTTPException(status_code=404, detail="Script not found")
+
+    return [char.to_out() for char in script.travelers]
+
+
 # TODO: Can we consolidate this into the method above?
 # I don't have internet so I can't check the docs.
 @router.get("/{script_name}/role/{name}")
