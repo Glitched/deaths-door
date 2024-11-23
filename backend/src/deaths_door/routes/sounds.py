@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.exceptions import HTTPException
 
-from ..sound_fx import SoundFX, SoundName
+from ..sound_fx import SoundFX, SoundName, sounds
 
 router = APIRouter(prefix="/sounds")
 
@@ -23,4 +23,4 @@ async def play_sound(name: str):
 @router.get("/list")
 async def list_sounds():
     """Return the names of available sounds to play."""
-    return list(SoundName)
+    return sounds

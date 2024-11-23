@@ -33,6 +33,14 @@ class SoundName(str, Enum):
                 return script
 
 
+sounds: dict[str, list[SoundName]] = {
+    "morning": [SoundName.ROOSTER, SoundName.ALARM, SoundName.TIMER],
+    "goodnight": [SoundName.MUSIC_BOX],
+    "reveal": [SoundName.DRUMROLL, SoundName.DRAMA, SoundName.SAD_TRUMPET],
+    "death": [SoundName.DEATH, SoundName.WILHELM],
+}
+
+
 class SoundFX:
     """Collection of all our sound files."""
 
