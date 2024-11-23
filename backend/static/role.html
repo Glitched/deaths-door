@@ -31,6 +31,7 @@
             height: 200px;
             margin: 0px auto;
             display: none;
+            filter: saturate(0)
         }
         #role {
             font-family: 'Help Me';
@@ -104,18 +105,12 @@
         const confirmNameButton = document.getElementById('confirm-name');
         const changeNameButton = document.getElementById('change-name');
 
-        const copyColors = {
-            good: '#62BDFF',
-            evil: '#FF6262'
-        };
-
-        const roleColors = {
-            good: '#C0E5FF',
-            evil: '#FFCCCC'
-        };
-
         let gameState = 'name-selection';
         let selectedPlayerName = '';
+
+        function capitalizeFirstLetter(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
 
         function fetchPlayerNames() {
             fetch('/players/names')
@@ -188,12 +183,12 @@
             }
 
             mainText.classList.remove('color-shift');
-            mainText.style.color = copyColors[selectedRole.alignment];
+            mainText.style.color = "#BBB";
             mainText.style.display = 'none';
             roleText.textContent = selectedRole.name;
-            roleText.style.color = roleColors[selectedRole.alignment];
-            descriptionText.textContent = selectedRole.description;
-            descriptionText.style.color = copyColors[selectedRole.alignment];
+            roleText.style.color = "#FFF";
+            descriptionText.innerHTML = "Team: " + capitalizeFirstLetter(selectedRole.alignment) + "<br><br>" + selectedRole.description;
+            descriptionText.style.color = "#BBB";
 
             if (selectedRole.icon_path) {
                 roleImage.src = '/static/icons/' + selectedRole.icon_path;
