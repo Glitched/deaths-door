@@ -74,7 +74,7 @@ exclude = ["**/__pycache__"]
 typeCheckingMode = "strict"
 
 # Prevent lint errors when using FastAPI Depends as a default argument
-[tool.ruff.flake8-bugbear]
+[tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = [
     "fastapi.Depends",
     "fastapi.params.Depends",

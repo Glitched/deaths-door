@@ -165,7 +165,7 @@ class Game:
         game.include_role("empath")
         game.include_role("investigator")
         game.include_role("mayor")
-        game.include_role("soldier")
+        game.include_role("fortune teller")
         game.include_role("slayer")
         game.include_role("scarlet woman")
         game.include_role("monk")
@@ -178,6 +178,8 @@ class Game:
         game.add_player_with_random_role("Yet Another Yash")
         game.add_player_with_random_role("Even More Ryan")
         game.add_player_with_random_role("Even More Yash")
+        game.add_player_with_random_role("Even Even More Ryan")
+        game.add_player_with_random_role("Even Even More Yash")
 
         yash.add_status_effect("Drunk")
         yash.add_status_effect("No Ability")
