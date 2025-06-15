@@ -12,7 +12,7 @@ class FortuneTeller(Character):
         self.name = "Fortune Teller"
         self.description = (
             "Each night, choose 2 players: you learn if either is a Demon."
-            + " There is 1 good player that registers falsely to you."
+            " There is 1 good player that registers falsely to you."
         )
         self.category = CharacterType.TOWNSFOLK
         self.alignment = Alignment.GOOD
