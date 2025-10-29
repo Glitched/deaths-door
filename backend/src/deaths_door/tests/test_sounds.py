@@ -12,7 +12,7 @@ async def test_list_sounds_returns_dict_of_categories():
         response = await client.get("/sounds/list")
         assert response.status_code == 200
 
-        sounds = response.json()
+        sounds: dict[str, list[str]] = response.json()
         assert isinstance(sounds, dict), "Response should be a dict"
         assert len(sounds) > 0, "Should have at least one category"
 

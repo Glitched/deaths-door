@@ -188,6 +188,8 @@ async def set_player_alive(
         try:
             game.set_player_alive_status(req.name, req.is_alive)
             player = game.get_player_by_name(req.name)
+            if player is None:
+                raise HTTPException(status_code=404, detail=f"Player '{req.name}' not found")
             return player.to_out()
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e

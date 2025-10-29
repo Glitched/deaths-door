@@ -16,7 +16,7 @@ async def test_poisoner_death_removes_poisoned_status():
     game.include_role("Empath")
 
     # Add players
-    poisoner_player = game.add_player_with_role("Alice", "Poisoner")
+    _poisoner_player = game.add_player_with_role("Alice", "Poisoner")
     chef_player = game.add_player_with_role("Bob", "Chef")
     empath_player = game.add_player_with_role("Charlie", "Empath")
 
@@ -44,7 +44,7 @@ async def test_monk_death_removes_safe_status():
     game.include_role("Chef")
     game.include_role("Empath")
 
-    monk_player = game.add_player_with_role("Alice", "Monk")
+    _monk_player = game.add_player_with_role("Alice", "Monk")
     chef_player = game.add_player_with_role("Bob", "Chef")
     empath_player = game.add_player_with_role("Charlie", "Empath")
 
@@ -72,9 +72,9 @@ async def test_butler_death_removes_master_status():
     game.include_role("Chef")
     game.include_role("Empath")
 
-    butler_player = game.add_player_with_role("Alice", "Butler")
+    _butler_player = game.add_player_with_role("Alice", "Butler")
     chef_player = game.add_player_with_role("Bob", "Chef")
-    empath_player = game.add_player_with_role("Charlie", "Empath")
+    _empath_player = game.add_player_with_role("Charlie", "Empath")
 
     # Mark Chef as Butler's Master
     chef_player.add_status_effect("Butler's Master")
@@ -97,7 +97,7 @@ async def test_non_persistent_character_death_leaves_other_effects():
     game.include_role("Chef")
     game.include_role("Empath")
 
-    imp_player = game.add_player_with_role("Alice", "Imp")
+    _imp_player = game.add_player_with_role("Alice", "Imp")
     chef_player = game.add_player_with_role("Bob", "Chef")
     empath_player = game.add_player_with_role("Charlie", "Empath")
 
@@ -120,7 +120,7 @@ async def test_resurrection_does_not_trigger_cleanup():
     game.include_role("Poisoner")
     game.include_role("Chef")
 
-    poisoner_player = game.add_player_with_role("Alice", "Poisoner")
+    _poisoner_player = game.add_player_with_role("Alice", "Poisoner")
     chef_player = game.add_player_with_role("Bob", "Chef")
 
     # Add poisoned status
@@ -145,7 +145,7 @@ async def test_multiple_status_effects_partial_removal():
     game.include_role("Poisoner")
     game.include_role("Chef")
 
-    poisoner_player = game.add_player_with_role("Alice", "Poisoner")
+    _poisoner_player = game.add_player_with_role("Alice", "Poisoner")
     chef_player = game.add_player_with_role("Bob", "Chef")
 
     # Add multiple status effects
