@@ -112,6 +112,46 @@ class Game:
         """Get a player by name."""
         return next((player for player in self.players if player.name == name), None)
 
+    def set_player_alive_status(self, player_name: str, is_alive: bool) -> None:
+        """
+        Set a player's alive status and handle status effect cleanup.
+
+        When a player dies, their persistent status effects are removed from all other players.
+        """
+        player = self.get_player_by_name(player_name)
+        if player is None:
+            raise ValueError(f"Player not found: {player_name}")
+
+        was_alive = player.is_alive
+        player.set_is_alive(is_alive)
+
+        # When a character dies, remove their persistent status effects from all players
+        if was_alive and not is_alive:
+            self._clear_character_status_effects(player.character.name)
+
+    def _clear_character_status_effects(self, character_name: str) -> None:
+        """
+        Clear persistent status effects applied by a specific character.
+
+        Mapping of characters to the status effects they apply:
+        - Poisoner -> "Poisoned"
+        - Monk -> "Safe"
+        - Butler -> "Butler's Master"
+        """
+        # Hardcoded mapping of characters to their persistent status effects
+        character_to_effects = {
+            "Poisoner": ["Poisoned"],
+            "Monk": ["Safe"],
+            "Butler": ["Butler's Master"],
+        }
+
+        effects_to_remove = character_to_effects.get(character_name, [])
+
+        # Remove these effects from all players
+        for player in self.players:
+            for effect in effects_to_remove:
+                player.remove_status_effect(effect)
+
     def remove_player_by_name(self, name: str) -> None:
         """Remove a player by name."""
         player = self.get_player_by_name(name)

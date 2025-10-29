@@ -1,5 +1,26 @@
 # TODO - Deaths Door Improvements
 
+## Nice-to-Have Features (BOTC Rules)
+
+### Dead Vote Tracking
+- **Feature**: Track when dead players have used their single vote
+- **Current State**: Player model has `has_used_dead_vote` field and setter, but no UI/API enforcement
+- **Implementation**: Add vote counting logic that prevents dead players from voting after they've used their vote
+- **Priority**: Medium - improves rules accuracy
+
+### Execution Threshold Calculation
+- **Feature**: Calculate and enforce execution threshold (≥50% of living players must vote)
+- **Current State**: No automatic calculation or enforcement
+- **Implementation**:
+  - Add endpoint: `GET /game/execution_threshold` that returns the current threshold
+  - Add endpoint: `POST /game/check_execution` that takes vote count and returns if execution succeeds
+  - Formula: `threshold = ceil(living_players / 2)`
+- **Priority**: Medium - important for accurate game rules
+
+---
+
+## Code Quality Improvements
+
 Based on comprehensive code analysis, here are the most needed improvements prioritized by impact:
 
 ## Critical Priority (Security & Stability)

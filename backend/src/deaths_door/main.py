@@ -4,7 +4,63 @@ from fastapi.staticfiles import StaticFiles
 
 from .routes import characters, game, players, scripts, sounds, timer
 
-app = FastAPI()
+app = FastAPI(
+    title="Death's Door - Blood on the Clocktower API",
+    description="""
+Blood on the Clocktower game management system with streaming integration.
+
+## Features
+
+* **Game Management**: Create and manage BOTC games with custom scripts
+* **Player Operations**: Add players, assign roles, track status
+* **Night Phase Guidance**: Get filtered night steps based on alive players
+* **Status Effects**: Automatic cleanup when characters die
+* **OBS Integration**: Optional streaming overlay support
+* **Timer Management**: Countdown timer with OBS sync
+
+## Workflow
+
+1. Create new game: `POST /game/new`
+2. Add roles to game: `POST /characters/add/multi`
+3. Add players: `POST /players/add` (assigns random roles)
+4. Guide night phases: `GET /game/script/night/first` and `/game/script/night/other`
+5. Manage player states: death, status effects, alignment
+    """,
+    version="1.0.0",
+    contact={
+        "name": "Death's Door",
+        "url": "https://github.com/Glitched/deaths-door",
+    },
+    license_info={
+        "name": "MIT",
+    },
+    openapi_tags=[
+        {
+            "name": "Game Management",
+            "description": "Create and manage BOTC games, retrieve script information, and access night phase steps.",
+        },
+        {
+            "name": "Players",
+            "description": "Manage players in the game: add, remove, modify status, swap characters, and control role visibility.",
+        },
+        {
+            "name": "Characters",
+            "description": "Add or remove character roles from the current game. Roles must be added before players can be assigned.",
+        },
+        {
+            "name": "Scripts",
+            "description": "Browse available scripts/editions and view their character lists and travelers.",
+        },
+        {
+            "name": "Timer",
+            "description": "Control the countdown timer for discussion phases. Syncs with OBS when available.",
+        },
+        {
+            "name": "Sounds",
+            "description": "Play sound effects for game events. Requires local sound files.",
+        },
+    ],
+)
 app.include_router(sounds.router)
 app.include_router(scripts.router)
 app.include_router(game.router)

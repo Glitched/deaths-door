@@ -11,4 +11,5 @@ async def test_scripts_list_succeeds():
     assert response.status_code == 200
     # Just check that we get a response with trouble_brewing
     response_data = response.json()
-    assert "trouble_brewing" in response_data
+    assert "scripts" in response_data
+    assert "trouble_brewing" in response_data["scripts"]
