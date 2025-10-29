@@ -38,6 +38,10 @@ async def play_sound(
 
 
 @router.get("/list")
-async def list_sounds() -> list[str]:
-    """Return the names of available sounds to play."""
-    return sounds
+async def list_sounds() -> dict[str, list[str]]:
+    """Return the available sounds organized by category."""
+    # Convert SoundName enums to strings for JSON serialization
+    return {
+        category: [sound.value for sound in sound_list]
+        for category, sound_list in sounds.items()
+    }
