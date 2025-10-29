@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .alignment import Alignment
 from .changes import Changes
@@ -9,11 +9,33 @@ from .status_effects import StatusEffect, StatusEffectOut
 class CharacterOut(BaseModel):
     """A character with only fields meant to be sent to the client."""
 
-    name: str
-    description: str
-    icon_path: str
-    alignment: Alignment
-    category: CharacterType
+    name: str = Field(
+        ...,
+        description="Character's display name",
+        examples=["Imp", "Chef", "Empath", "Baron"],
+    )
+    description: str = Field(
+        ...,
+        description="Character's ability description",
+        examples=[
+            "Each night*, choose a player: they die. If you kill yourself this way, a Minion becomes the Imp."
+        ],
+    )
+    icon_path: str = Field(
+        ...,
+        description="Path to the character's icon image",
+        examples=["imp.png", "chef.png"],
+    )
+    alignment: Alignment = Field(
+        ...,
+        description="Character's alignment (good or evil)",
+        examples=["evil", "good"],
+    )
+    category: CharacterType = Field(
+        ...,
+        description="Character's type/category",
+        examples=["demon", "townsfolk", "outsider", "minion", "traveler"],
+    )
 
 
 class Character:
