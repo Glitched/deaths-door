@@ -21,10 +21,22 @@ Blood on the Clocktower game management system with streaming integration.
 ## Workflow
 
 1. Create new game: `POST /game/new`
-2. Add roles to game: `POST /characters/add/multi`
-3. Add players: `POST /players/add` (assigns random roles)
-4. Guide night phases: `GET /game/script/night/first` and `/game/script/night/other`
-5. Manage player states: death, status effects, alignment
+2. Add roles to game: `POST /characters/add/multi` (build your custom character pool)
+3. Add players: `POST /players/add` (assigns random roles from the pool)
+4. **Enable role visibility**: `POST /players/set_visibility` with `should_reveal_roles: true`
+   - By default, roles are hidden until visibility is enabled
+   - The `/players/name/{name}` endpoint waits for visibility before revealing roles
+   - This allows the storyteller to control when player roles become visible
+5. Guide night phases: `GET /game/script/night/first` and `/game/script/night/other`
+6. Manage player states: death, status effects, alignment
+
+## Key Concepts
+
+**Role Visibility**: Controls when player roles are revealed to the storyteller. Use `POST /players/set_visibility`
+to enable/disable. When disabled, `GET /players/name/{name}` will wait up to 10 seconds before timing out.
+
+**Script vs Included Roles**: The script defines ALL possible characters. You must explicitly add roles via
+`POST /characters/add/multi` to make them available for player assignment.
     """,
     version="1.0.0",
     contact={

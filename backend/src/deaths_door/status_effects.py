@@ -1,11 +1,19 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class StatusEffectOut(BaseModel):
-    """A collection of status effects."""
+    """A single status effect applied to a character."""
 
-    name: str
-    character_name: str
+    name: str = Field(
+        ...,
+        description="Name of the status effect",
+        examples=["Poisoned", "Safe", "Is the Drunk", "Butler's Master"],
+    )
+    character_name: str = Field(
+        ...,
+        description="Name of the character this status effect is attached to",
+        examples=["Imp", "Chef", "Butler"],
+    )
 
 
 class StatusEffect:

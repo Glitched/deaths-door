@@ -59,7 +59,11 @@ async def get_game_script(
 async def get_game_script_roles(
     game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
 ) -> list[CharacterOut]:
-    """Return all available character roles in the current script."""
+    """Return all possible character roles available in the current script.
+
+    This returns the complete set of roles defined by the script (e.g., all Trouble Brewing roles).
+    To see which roles have been added to the current game, use GET /characters/list instead.
+    """
     async with game_ctx as game:
         return [c.to_out() for c in game.script.characters]
 

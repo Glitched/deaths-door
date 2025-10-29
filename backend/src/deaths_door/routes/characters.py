@@ -34,7 +34,11 @@ router = APIRouter(prefix="/characters", tags=["Characters"])
 async def get_game_roles(
     game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
 ) -> list[CharacterOut]:
-    """List the names of roles present in the current game."""
+    """List roles that have been added to the current game via /characters/add/multi.
+
+    This returns the active role pool that players will be randomly assigned from.
+    To see ALL possible roles in the script, use GET /game/script/roles instead.
+    """
     async with game_ctx as game:
         return [c.to_out() for c in game.included_roles]
 
