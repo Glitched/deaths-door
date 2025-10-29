@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
 
 from obswebsocket import obsws, requests
 
 from .obs.types import Input, Scene, SceneItemTransform, VideoSettings
+
+logger = logging.getLogger(__name__)
 
 TIMER_NAME = "Countdown Timer"
 SCENE_NAME = "Countdown Scene"
@@ -32,13 +35,21 @@ class ObsManager:
     input_id: int = -1
     """The ID of the input for the countdown."""
 
+    connected: bool = False
+    """Whether we're currently connected to OBS."""
+
     def __init__(self, host: str, port: int, password: str) -> None:
         """Create a new connection to OBS."""
         self.ws = obsws(host, port, password)
+        self.connected = False
         try:
             self.ws.connect()
+            self.connected = True
+            logger.info("Successfully connected to OBS WebSocket")
         except Exception as e:
-            print(f"Failed to connect to OBS: {e}")
+            logger.warning(
+                f"Failed to connect to OBS: {e}. Continuing without OBS support."
+            )
         self.run_id = str(uuid.uuid4())
 
     # Sadly, the OBS websocket API is not typed.
@@ -124,26 +135,54 @@ class ObsManager:
 
     def setup_obs_scene(self) -> None:
         """Create the OBS scene for the countdown."""
-        self.reset_scene()
-        self.set_current_scene()
+        if not self.connected:
+            logger.debug("Skipping OBS scene setup - not connected")
+            return
 
-        # Add a text source to the scene for the countdown timer.
-        el = self.create_input(
-            TIMER_NAME,
-            "text_ft2_source_v2",
-            {
-                "text": "5:00",
-                "font": {"size": FONT_SIZE, "face": "Help Me"},
-                "color": 0xFFFFFFFF,
-                "color1": 0xFF001FEF,
-                "color2": 0xFF000069,
-            },
-        )
-        self.input_id = el.sceneItemId
-        self.set_scene_item_transform(self.input_id, {"scaleX": 2, "scaleY": 2})
+        try:
+            self.reset_scene()
+            self.set_current_scene()
+
+            # Add a text source to the scene for the countdown timer.
+            # Try with custom font, fallback to Arial if not available
+            try:
+                el = self.create_input(
+                    TIMER_NAME,
+                    "text_ft2_source_v2",
+                    {
+                        "text": "5:00",
+                        "font": {"size": FONT_SIZE, "face": "Help Me"},
+                        "color": 0xFFFFFFFF,
+                        "color1": 0xFF001FEF,
+                        "color2": 0xFF000069,
+                    },
+                )
+            except Exception:
+                logger.warning("Font 'Help Me' not found, using Arial as fallback")
+                el = self.create_input(
+                    TIMER_NAME,
+                    "text_ft2_source_v2",
+                    {
+                        "text": "5:00",
+                        "font": {"size": FONT_SIZE, "face": "Arial"},
+                        "color": 0xFFFFFFFF,
+                        "color1": 0xFF001FEF,
+                        "color2": 0xFF000069,
+                    },
+                )
+
+            self.input_id = el.sceneItemId
+            self.set_scene_item_transform(self.input_id, {"scaleX": 2, "scaleY": 2})
+        except Exception as e:
+            logger.error(f"Failed to setup OBS scene: {e}")
+            self.connected = False
+            raise
 
     def update_timer(self, seconds: int) -> None:
         """Update the timer."""
+        if not self.connected:
+            return  # Gracefully skip if not connected
+
         try:
             # Set the text to the current time
             minutes, seconds = divmod(seconds, 60)
@@ -156,6 +195,9 @@ class ObsManager:
             x = (screen.baseWidth - transform.width) / 2
             self.set_scene_item_transform(self.input_id, {"positionX": x})
 
-        except Exception:  # noqa: S110
-            # If we're not connected to OBS, don't add log lines regularly
-            pass
+        except Exception as e:
+            # Connection lost during operation - log once and mark disconnected
+            logger.warning(
+                f"OBS connection lost during timer update: {e}. Disabling OBS."
+            )
+            self.connected = False

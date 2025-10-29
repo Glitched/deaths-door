@@ -25,11 +25,25 @@ class Player:
     has_used_dead_vote: bool = False
     status_effects: list[str]
 
+    def __str__(self) -> str:
+        """Return a human-readable string representation."""
+        status = "dead" if not self.is_alive else "alive"
+        return f"{self.name} as {self.character.name} ({status})"
+
+    def __repr__(self) -> str:
+        """Return a detailed string representation."""
+        return (
+            f"Player(name={self.name!r}, "
+            f"character={self.character.name!r}, "
+            f"is_alive={self.is_alive}, "
+            f"alignment={self.alignment!r})"
+        )
+
     def __init__(self, name: str, character: Character) -> None:
         """Create a new player, getting their alignment from the Character."""
         self.name = name
         self.character = character
-        self.alignment = character.get_alignment()
+        self.alignment = character.alignment
         self.status_effects = []
 
     def set_name(self, name: str) -> None:
@@ -54,11 +68,15 @@ class Player:
 
     def add_status_effect(self, status_effect: str) -> None:
         """Add a status effect to the player."""
-        self.status_effects.append(status_effect)
+        if status_effect not in self.status_effects:
+            self.status_effects.append(status_effect)
 
     def remove_status_effect(self, status_effect: str) -> None:
         """Remove a status effect from the player."""
-        self.status_effects.remove(status_effect)
+        try:
+            self.status_effects.remove(status_effect)
+        except ValueError:
+            pass  # Effect wasn't present, which is fine
 
     def to_out(self) -> PlayerOut:
         """Convert a player to outgoing data."""
@@ -70,7 +88,3 @@ class Player:
             has_used_dead_vote=self.has_used_dead_vote,
             status_effects=self.status_effects,
         )
-
-    def __repr__(self) -> str:
-        """Return a string representation of the player."""
-        return f"Player({self.name}, {self.character.get_name()})"

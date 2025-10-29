@@ -26,29 +26,27 @@ class Character:
     status_effects: list[StatusEffect]
     changes: None | Changes
 
-    def get_name(self) -> str:
-        """Return the character's name."""
-        return self.name
+    def __str__(self) -> str:
+        """Return a human-readable string representation."""
+        return f"{self.name} ({self.category.value})"
 
-    def get_description(self) -> str:
-        """Return the character's description."""
-        return self.description
+    def __repr__(self) -> str:
+        """Return a detailed string representation."""
+        return (
+            f"Character(name={self.name!r}, "
+            f"category={self.category!r}, "
+            f"alignment={self.alignment!r})"
+        )
 
-    def get_alignment(self) -> Alignment:
-        """Return the character's alignment."""
-        return self.alignment
-
-    def get_category(self) -> CharacterType:
-        """Return the character's category."""
-        return self.category
-
-    def normalize(self, s: str) -> str:
-        """Normalize a character name for comparisons."""
-        return s.lower().strip()
+    def normalize_name_for_comparison(self, name: str) -> str:
+        """Convert name to lowercase and remove whitespace for comparison."""
+        return name.lower().strip()
 
     def is_named(self, name: str) -> bool:
         """Check if the character matches the given name."""
-        return self.normalize(self.name) == self.normalize(name)
+        return self.normalize_name_for_comparison(
+            self.name
+        ) == self.normalize_name_for_comparison(name)
 
     def get_icon_path(self) -> str:
         """Return the character's icon."""
@@ -69,7 +67,3 @@ class Character:
             alignment=self.alignment,
             category=self.category,
         )
-
-    def __repr__(self) -> str:
-        """Return a string representation of the character."""
-        return f"Character({self.name})"

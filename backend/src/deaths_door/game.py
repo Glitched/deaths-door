@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import secrets
-from itertools import chain
 from typing import Generator
 
 from .character import Character
@@ -20,6 +19,18 @@ class Game:
     players: list[Player]
     should_reveal_roles: bool = False
 
+    def __str__(self) -> str:
+        """Return a human-readable string representation."""
+        return f"Game({self.script.name}, {len(self.players)} players)"
+
+    def __repr__(self) -> str:
+        """Return a detailed string representation."""
+        return (
+            f"Game(script={self.script.name!r}, "
+            f"players={len(self.players)}, "
+            f"roles={len(self.included_roles)})"
+        )
+
     def __init__(self, script_name: ScriptName) -> None:
         """Create a new game."""
         script = get_script_by_name(script_name)
@@ -29,15 +40,6 @@ class Game:
         self.script = script
         self.included_roles = []
         self.players = []
-
-    def get_should_reveal_roles(self) -> bool:
-        """Get whether the roles should be revealed."""
-        return self.should_reveal_roles
-
-    def set_should_reveal_roles(self, should_reveal_roles: bool) -> bool:
-        """Set whether the roles should be revealed."""
-        self.should_reveal_roles = should_reveal_roles
-        return self.should_reveal_roles
 
     def include_role(self, role_name: str) -> None:
         """Add a role to the game."""
@@ -61,9 +63,14 @@ class Game:
         if len(self.included_roles) == 0:
             raise ValueError("No roles to assign")
 
-        character = next(
-            char for char in self.included_roles if char.is_named(role_name)
-        )
+        try:
+            character = next(
+                char for char in self.included_roles if char.is_named(role_name)
+            )
+        except StopIteration:
+            raise ValueError(
+                f"Role '{role_name}' not found in included roles"
+            ) from None
 
         return self.add_player_with_character(name, character)
 
@@ -87,9 +94,12 @@ class Game:
         """Add a player as a traveler to the game."""
         # Check if traveler is valid and unassigned
         travelers = self.get_unclaimed_travelers()
-        traveler = next(
-            (traveler for traveler in travelers if traveler.name == traveler_name), None
-        )
+        try:
+            traveler = next(
+                traveler for traveler in travelers if traveler.name == traveler_name
+            )
+        except StopIteration:
+            traveler = None
 
         if traveler is None:
             raise ValueError(f"Traveler not found or in game: {traveler_name}")
@@ -111,46 +121,48 @@ class Game:
         self.players.remove(player)
         self.included_roles.append(player.character)
 
-    def character_with_name_is_alive(self, name: str) -> bool:
-        """Check if a character with a given name is alive."""
+    def has_living_character_named(self, character_name: str) -> bool:
+        """Check if any living player has the specified character."""
         return any(
-            player.character.is_named(name) or player.is_alive
+            player.character.is_named(character_name) and player.is_alive
             for player in self.players
         )
 
     def get_first_night_steps(self) -> Generator[NightStep, None, None]:
         """Get the first night steps."""
-        return self.filter_steps(self.script.get_first_night_steps())
+        return self.filter_active_night_steps(self.script.get_first_night_steps())
 
     def get_other_night_steps(self) -> Generator[NightStep, None, None]:
         """Get the other night steps."""
-        return self.filter_steps(self.script.get_other_night_steps())
+        return self.filter_active_night_steps(self.script.get_other_night_steps())
 
-    def filter_steps(self, steps: list[NightStep]) -> Generator[NightStep, None, None]:
-        """Filter steps based on the current game state."""
+    def filter_active_night_steps(
+        self, steps: list[NightStep]
+    ) -> Generator[NightStep, None, None]:
+        """Yield night steps that should be shown based on current game state."""
         for step in steps:
-            if step.always_show or self.character_with_name_is_alive(step.name):
+            should_show = step.always_show or self.has_living_character_named(step.name)
+            if should_show:
                 yield step
 
     def get_status_effects(self) -> list[StatusEffectOut]:
         """Get the status effects in the game."""
-        effects = list(
-            chain.from_iterable(
-                player.character.get_status_effects_out() for player in self.players
-            )
-        )
+        all_status_effects = [
+            effect
+            for player in self.players
+            for effect in player.character.get_status_effects_out()
+        ]
         # Sort by character name so list order is consistent
-        effects.sort(key=lambda x: x.character_name)
-        return effects
+        all_status_effects.sort(key=lambda effect: effect.character_name)
+        return all_status_effects
 
     def get_unclaimed_travelers(self) -> list[Character]:
         """Get the unclaimed travelers."""
-        all_travelers = self.script.travelers
-        claimed_travelers = [player.character.name for player in self.players]
+        claimed_characters = [player.character for player in self.players]
         return [
             traveler
-            for traveler in all_travelers
-            if traveler.name not in claimed_travelers
+            for traveler in self.script.travelers
+            if traveler not in claimed_characters
         ]
 
     @classmethod

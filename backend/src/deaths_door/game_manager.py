@@ -1,4 +1,5 @@
-from threading import Lock
+import asyncio
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from .game import Game
 
@@ -9,27 +10,43 @@ class GameManager:
     def __init__(self):
         """Create a new game manager."""
         self.game = Game.get_sample_game()
-        self.lock = Lock()
+        self.lock = asyncio.Lock()
 
-    def get_game(self) -> Game:
-        """Get the current game."""
-        with self.lock:
+    @asynccontextmanager
+    async def locked_game(self):
+        """
+        Get the game with lock held for the duration of the context.
+
+        This ensures that game state mutations are thread-safe by holding
+        the lock for the entire operation, not just while retrieving the reference.
+        """
+        async with self.lock:
+            yield self.game
+
+    async def get_game(self) -> Game:
+        """Get the current game (for read-only access)."""
+        async with self.lock:
             return self.game
 
-    def replace_game(self, new_game: Game):
+    async def replace_game(self, new_game: Game):
         """Replace the current game."""
-        with self.lock:
+        async with self.lock:
             self.game = new_game
 
 
 game_manager = GameManager()
 
 
-def get_current_game():
-    """Get the current game."""
-    return game_manager.get_game()
+async def get_current_game() -> AbstractAsyncContextManager[Game]:
+    """
+    FastAPI dependency that provides locked access to the game.
+
+    Returns a context manager that must be used with 'async with'.
+    This ensures the lock is held for the entire route handler operation.
+    """
+    return game_manager.locked_game()
 
 
-def replace_game(new_game: Game):
+async def replace_game(new_game: Game):
     """Replace the current game."""
-    game_manager.replace_game(new_game)
+    await game_manager.replace_game(new_game)

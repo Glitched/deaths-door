@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import os
+import logging
 
+from .config import Config
 from .obs_manager import ObsManager
 from .sound_fx import SoundFX, SoundName
+
+logger = logging.getLogger(__name__)
 
 
 class TimerState:
@@ -12,22 +15,33 @@ class TimerState:
 
     is_running: bool = False
     seconds: int = 5 * 60
-    _lock: asyncio.Lock = asyncio.Lock()
+    _lock: asyncio.Lock
     _obs_manager: ObsManager
 
     def __init__(self):
-        """Initialize the timer and start the on-tick loop."""
-        loop = asyncio.get_event_loop()
-
-        loop.create_task(self.handle_tick())
+        """Initialize the timer and OBS manager."""
+        self._lock = asyncio.Lock()
         self._obs_manager = ObsManager(
-            host="localhost", port=4455, password=os.getenv("OBS_PASSWORD", "dev_only")
+            host="localhost", port=4455, password=Config.get_obs_password()
         )
+        self._tick_task = None
 
         try:
             self._obs_manager.setup_obs_scene()
         except Exception as e:
-            print(f"Failed to setup OBS scene: {e}")
+            if Config.is_obs_required():
+                raise RuntimeError(f"OBS connection required but failed: {e}") from e
+            logger.warning(f"OBS not available, running without streaming support: {e}")
+
+    def _ensure_tick_task_running(self):
+        """Ensure the tick task is running if we have an event loop."""
+        if self._tick_task is None or self._tick_task.done():
+            try:
+                loop = asyncio.get_running_loop()
+                self._tick_task = loop.create_task(self.handle_tick())
+            except RuntimeError:
+                # No running loop - that's fine, task will start when loop exists
+                pass
 
     async def handle_tick(self):
         """Handle the tick of the timer."""
@@ -45,11 +59,13 @@ class TimerState:
 
     async def set_is_running(self, new_value: bool):
         """Set whether the timer should be running."""
+        self._ensure_tick_task_running()
         async with self._lock:
             self.is_running = new_value
 
     async def set_seconds(self, new_value: int):
         """Set the number of seconds left."""
+        self._ensure_tick_task_running()
         async with self._lock:
             self.seconds = new_value
             if self.seconds < 0:
