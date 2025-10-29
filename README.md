@@ -1,22 +1,85 @@
 # Death's Door
 
-This repo contains a small tool we wrote to increase the production value when we host games of [Blood on the Clocktower](https://bloodontheclocktower.com/).
+A game management system for [Blood on the Clocktower](https://bloodontheclocktower.com/) with streaming integration. Manages game state, player roles, and integrates with OBS Studio for professional stream overlays and production value.
 
-The backend component, a [FastAPI](https://fastapi.tiangolo.com/) app, is intended to be run on a computer powering the speakers/music for the event. Currently it has limited soundboard capabilities, but we intend to expand it to include support for setting up [OBS](https://obsproject.com/) scenes with timers, death screens, and more.
+## Features
 
-The frontend is a [NextJS](https://nextjs.org/) app intended to serve as a small remote, allowing us to trigger sound effects, OBS scenes, or advance the game state.
+- **Complete Game State Management**: Track players, characters, alignments, and status effects across multiple scripts (Trouble Brewing, etc.)
+- **OBS Studio Integration**: Automated scene management, countdown timers, and stream overlays (optional)
+- **RESTful API**: FastAPI backend with full type safety and async support
+- **Web Control Interface**: Next.js remote for game control and scene triggering
+- **Soundboard**: Trigger sound effects and music during gameplay
 
-Currently, we're building out a representation of game state to provide sensible options without large amounts of manual input. The goal is to operate as seamlessly as possible and add to the experience of playing the game rather than detract from it.
+## Quick Start
 
-## Running the backend
+### Backend
 
-1. Install the font [Help Me](https://www.dafont.com/help-me.font)
-2. Install and run [OBS](https://obsproject.com/downloads)
-3. Enable the websocket and set the password in your environment as `OBS_PASSWORD`
-4. Install packages via [poetry](https://python-poetry.org/docs/) with `poetry install`
-5. Entry the poetry virtual env with `poetry shell`
-6. Run the backend with `uvicorn src.deaths_door.main:app`. You may add `--reload` to the command to have the server restart when you change the code.
+**Prerequisites**: Python 3.12+, [Poetry](https://python-poetry.org/)
 
-## Frontend
+```bash
+cd backend
+poetry install
+poetry shell
 
-The NextJS frontend has been deprioritized in favor of a native iOS app, which is not yet published.
+# Run development server
+make run
+# or: uvicorn src.deaths_door.main:app --reload --host 0.0.0.0
+```
+
+**OBS Integration** (optional):
+1. Install [OBS Studio](https://obsproject.com/downloads) and enable WebSocket server
+2. Set environment variable: `export OBS_PASSWORD=your_password`
+3. Install font [Help Me](https://www.dafont.com/help-me.font) for timer overlays (falls back to Arial)
+
+> The backend runs without OBS in development mode. Set `OBS_REQUIRED=true` for production.
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+> Note: The Next.js frontend is being deprioritized in favor of a native iOS app (not yet published).
+
+## Development
+
+### Backend Commands
+```bash
+# Testing
+poetry run pytest
+poetry run pytest --cov=deaths_door --cov-report=html
+
+# Linting & type checking
+poetry run ruff check src/
+poetry run ruff format src/
+poetry run pyright src/
+```
+
+### Frontend Commands
+```bash
+npm run build
+npm run lint
+```
+
+## Architecture
+
+- **Game State**: Centralized `GameManager` with async lock-protected access for consistency
+- **Character System**: Hierarchical character classes (Townsfolk/Outsiders/Minions/Demons/Travelers)
+- **Scripts**: Configurable game variants defining character pools and night sequences
+- **API**: RESTful endpoints with Pydantic models for type-safe serialization
+- **OBS Integration**: WebSocket-based scene control with graceful degradation
+
+### Game Setup Workflow
+
+Games start with no roles included by default. Manual role selection required:
+
+1. Create game: `POST /game/new` with script name
+2. Add roles: `POST /characters/add/multi` with character names
+3. Add players: `POST /players/add` (assigned random roles from pool)
+4. Add travelers: `POST /players/add_traveler` with specific traveler name
+
+## Documentation
+
+See [CLAUDE.md](CLAUDE.md) for detailed architecture, API documentation, and development guidelines.
