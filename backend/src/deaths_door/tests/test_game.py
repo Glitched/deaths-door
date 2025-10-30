@@ -213,3 +213,33 @@ async def test_remove_nonexistent_player():
 
     with pytest.raises(ValueError, match="Player not found: NonExistentPlayer"):
         game.remove_player_by_name("NonExistentPlayer")
+
+
+@pytest.mark.anyio
+async def test_night_phase_defaults():
+    """Test that night phase fields have correct default values."""
+    game = Game(script_name=ScriptName.TROUBLE_BREWING)
+
+    # Check defaults
+    assert game.current_night_step == "Dusk"
+    assert game.is_first_night is True
+
+
+@pytest.mark.anyio
+async def test_night_phase_modification():
+    """Test modifying night phase fields."""
+    game = Game(script_name=ScriptName.TROUBLE_BREWING)
+
+    # Modify current_night_step
+    game.current_night_step = "Poisoner"
+    assert game.current_night_step == "Poisoner"
+
+    # Modify is_first_night
+    game.is_first_night = False
+    assert game.is_first_night is False
+
+    # Change back
+    game.current_night_step = "Dusk"
+    game.is_first_night = True
+    assert game.current_night_step == "Dusk"
+    assert game.is_first_night is True

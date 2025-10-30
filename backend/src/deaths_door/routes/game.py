@@ -93,3 +93,90 @@ async def get_game_status_effects(
     """Return the status effects for the current game."""
     async with game_ctx as game:
         return game.get_status_effects()
+
+
+class NightPhaseResponse(BaseModel):
+    """Response containing current night phase information."""
+
+    current_night_step: str = Field(
+        ...,
+        description="Name of the current night step (e.g., 'Dusk', 'Poisoner')",
+        examples=["Dusk", "Poisoner", "Fortune Teller"],
+    )
+    is_first_night: bool = Field(
+        ...,
+        description="Whether this is the first night or a subsequent night",
+        examples=[True, False],
+    )
+
+
+@router.get("/night/phase")
+async def get_night_phase(
+    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
+) -> NightPhaseResponse:
+    """Get the current night phase information."""
+    async with game_ctx as game:
+        return NightPhaseResponse(
+            current_night_step=game.current_night_step,
+            is_first_night=game.is_first_night,
+        )
+
+
+class SetNightStepRequest(BaseModel):
+    """Request to set the current night step."""
+
+    step: str = Field(
+        ...,
+        description="Name of the night step to set as current",
+        examples=["Dusk", "Poisoner", "Imp", "Dawn"],
+    )
+
+
+@router.post("/night/phase/step")
+async def set_night_step(
+    req: SetNightStepRequest,
+    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
+) -> NightPhaseResponse:
+    """Set the current night step."""
+    async with game_ctx as game:
+        game.current_night_step = req.step
+        return NightPhaseResponse(
+            current_night_step=game.current_night_step,
+            is_first_night=game.is_first_night,
+        )
+
+
+class SetFirstNightRequest(BaseModel):
+    """Request to set whether it's the first night."""
+
+    is_first_night: bool = Field(
+        ...,
+        description="Whether this is the first night",
+        examples=[True, False],
+    )
+
+
+@router.post("/night/phase/first_night")
+async def set_first_night(
+    req: SetFirstNightRequest,
+    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
+) -> NightPhaseResponse:
+    """Set whether this is the first night."""
+    async with game_ctx as game:
+        game.is_first_night = req.is_first_night
+        return NightPhaseResponse(
+            current_night_step=game.current_night_step,
+            is_first_night=game.is_first_night,
+        )
+
+
+@router.get("/script/night/steps")
+async def get_night_steps(
+    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
+) -> list[NightStep]:
+    """Return the night steps for the current night (first or other based on game state)."""
+    async with game_ctx as game:
+        if game.is_first_night:
+            return list(game.get_first_night_steps())
+        else:
+            return list(game.get_other_night_steps())

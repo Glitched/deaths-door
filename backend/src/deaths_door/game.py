@@ -18,6 +18,8 @@ class Game:
     included_roles: list[Character]
     players: list[Player]
     should_reveal_roles: bool = False
+    current_night_step: str = "Dusk"
+    is_first_night: bool = True
 
     def __str__(self) -> str:
         """Return a human-readable string representation."""
@@ -221,9 +223,10 @@ class Game:
         game.include_role("slayer")
         game.include_role("scarlet woman")
         game.include_role("monk")
+        game.include_role("virgin")
 
-        ryan = game.add_player_with_random_role("Ryan")
-        yash = game.add_player_with_random_role("Yash")
+        ryan = game.add_player_with_role("Ryan", "baron")
+        yash = game.add_player_with_role("Yash", "virgin")
         game.add_player_with_random_role("Other Ryan")
         game.add_player_with_random_role("Other Yash")
         game.add_player_with_random_role("Yet Another Ryan")
