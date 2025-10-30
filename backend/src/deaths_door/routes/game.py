@@ -8,6 +8,7 @@ from ..character import CharacterOut
 from ..game import Game
 from ..game_manager import get_current_game, replace_game
 from ..night_step import NightStep
+from ..player import PlayerOut
 from ..script import ScriptName
 from ..status_effects import StatusEffectOut
 
@@ -93,6 +94,58 @@ async def get_game_status_effects(
     """Return the status effects for the current game."""
     async with game_ctx as game:
         return game.get_status_effects()
+
+
+class GameStateResponse(BaseModel):
+    """Complete game state including all relevant information."""
+
+    script_name: str = Field(
+        ...,
+        description="Name of the current script/edition",
+        examples=["trouble_brewing"],
+    )
+    players: list[PlayerOut] = Field(
+        ...,
+        description="All players in the game with their characters and status",
+    )
+    current_night_step: str = Field(
+        ...,
+        description="Current night step bookmark",
+        examples=["Dusk", "Poisoner", "Imp"],
+    )
+    is_first_night: bool = Field(
+        ...,
+        description="Whether this is the first night or a subsequent night",
+    )
+    should_reveal_roles: bool = Field(
+        ...,
+        description="Whether roles should be revealed to players",
+    )
+    status_effects: list[StatusEffectOut] = Field(
+        ...,
+        description="All active status effects in the game",
+    )
+    included_roles: list[CharacterOut] = Field(
+        ...,
+        description="Roles that have been included but not yet assigned to players",
+    )
+
+
+@router.get("/state")
+async def get_game_state(
+    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
+) -> GameStateResponse:
+    """Get the complete game state in a single request."""
+    async with game_ctx as game:
+        return GameStateResponse(
+            script_name=game.script.name.value,
+            players=[player.to_out() for player in game.players],
+            current_night_step=game.current_night_step,
+            is_first_night=game.is_first_night,
+            should_reveal_roles=game.should_reveal_roles,
+            status_effects=game.get_status_effects(),
+            included_roles=[role.to_out() for role in game.included_roles],
+        )
 
 
 class NightPhaseResponse(BaseModel):
