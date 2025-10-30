@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 
 from ..config import Config
@@ -81,7 +81,13 @@ async def add_seconds(
 
 
 @timer.get("/start", responses={400: {"description": "Invalid timer seconds"}})
-async def start_timer(seconds: int | None = None) -> TimerOperationResponse:
+async def start_timer(
+    seconds: int | None = Query(
+        None,
+        description="Optional number of seconds to set before starting the timer",
+        examples=[300, 60],
+    )
+) -> TimerOperationResponse:
     """Start the timer, optionally setting seconds first."""
     if seconds is not None:
         validate_timer_seconds(seconds)

@@ -71,6 +71,10 @@ to enable/disable. When disabled, `GET /players/name/{name}` will wait up to 10 
             "name": "Sounds",
             "description": "Play sound effects for game events. Requires local sound files.",
         },
+        {
+            "name": "System",
+            "description": "Health checks and static file serving for the web interface.",
+        },
     ],
 )
 app.include_router(sounds.router)
@@ -83,7 +87,7 @@ app.include_router(characters.router)
 app.mount("/static/", StaticFiles(directory="static", html=True), name="static")
 
 
-@app.get("/health")
+@app.get("/health", tags=["System"])
 def health():
     """Health check for the service to validate connection."""
     return {"status": "ok", "version": "0.0.1"}
@@ -92,13 +96,13 @@ def health():
 # Vanity routes for the web client
 
 
-@app.get("/favicon.ico")
+@app.get("/favicon.ico", tags=["System"])
 def favicon():
-    """Health check for the service to validate connection."""
+    """Serve the application favicon."""
     return FileResponse("static/favicon.ico", media_type="image/x-icon")
 
 
-@app.get("/")
-def get_role():
-    """Health check for the service to validate connection."""
+@app.get("/", tags=["System"])
+def root():
+    """Serve the role reveal web interface."""
     return FileResponse("static/role.html", media_type="text/html")
