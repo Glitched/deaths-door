@@ -209,6 +209,7 @@ async def test_get_game_state():
         assert "status_effects" in state
         assert "included_roles" in state
         assert "night_steps" in state
+        assert "timer" in state
 
         # Check default values
         assert state["script_name"] == "trouble_brewing"
@@ -221,6 +222,13 @@ async def test_get_game_state():
         assert len(state["included_roles"]) > 0  # Should have roles available
         assert isinstance(state["night_steps"], list)
         assert len(state["night_steps"]) > 0  # Should have first night steps
+
+        # Verify timer state structure
+        assert "is_running" in state["timer"]
+        assert "seconds" in state["timer"]
+        assert isinstance(state["timer"]["is_running"], bool)
+        assert isinstance(state["timer"]["seconds"], int)
+        assert state["timer"]["seconds"] >= 0
 
         # Verify night steps contain expected structure
         first_step = state["night_steps"][0]

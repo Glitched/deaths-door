@@ -11,6 +11,7 @@ from ..night_step import NightStep
 from ..player import PlayerOut
 from ..script import ScriptName
 from ..status_effects import StatusEffectOut
+from . import timer as timer_routes
 
 router = APIRouter(prefix="/game", tags=["Game Management"])
 
@@ -133,6 +134,10 @@ class GameStateResponse(BaseModel):
         ...,
         description="Night steps for the current night (filtered based on is_first_night)",
     )
+    timer: timer_routes.TimerStateResponse = Field(
+        ...,
+        description="Current timer state (is_running and seconds remaining)",
+    )
 
 
 @router.get("/state")
@@ -147,6 +152,10 @@ async def get_game_state(
         else:
             night_steps = list(game.get_other_night_steps())
 
+        # Get timer state
+        timer_is_running = await timer_routes.state.get_is_running()
+        timer_seconds = await timer_routes.state.get_seconds()
+
         return GameStateResponse(
             script_name=game.script.name.value,
             players=[player.to_out() for player in game.players],
@@ -156,6 +165,10 @@ async def get_game_state(
             status_effects=game.get_status_effects(),
             included_roles=[role.to_out() for role in game.included_roles],
             night_steps=night_steps,
+            timer=timer_routes.TimerStateResponse(
+                is_running=timer_is_running,
+                seconds=timer_seconds,
+            ),
         )
 
 
