@@ -235,6 +235,7 @@ class Game:
         game.add_player_with_random_role("Even More Yash")
         game.add_player_with_random_role("Even Even More Ryan")
         game.add_player_with_random_role("Even Even More Yash")
+        game.add_player_with_random_role("Claude")
 
         yash.add_status_effect("Drunk")
         yash.add_status_effect("No Ability")
