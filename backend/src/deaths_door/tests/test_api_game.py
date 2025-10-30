@@ -208,6 +208,7 @@ async def test_get_game_state():
         assert "should_reveal_roles" in state
         assert "status_effects" in state
         assert "included_roles" in state
+        assert "night_steps" in state
 
         # Check default values
         assert state["script_name"] == "trouble_brewing"
@@ -218,6 +219,14 @@ async def test_get_game_state():
         assert isinstance(state["status_effects"], list)
         assert isinstance(state["included_roles"], list)
         assert len(state["included_roles"]) > 0  # Should have roles available
+        assert isinstance(state["night_steps"], list)
+        assert len(state["night_steps"]) > 0  # Should have first night steps
+
+        # Verify night steps contain expected structure
+        first_step = state["night_steps"][0]
+        assert "name" in first_step
+        assert "description" in first_step
+        assert first_step["name"] == "Dusk"  # First step should be Dusk
 
 
 @pytest.mark.anyio
@@ -261,8 +270,13 @@ async def test_get_game_state_reflects_night_phase_changes():
         await client.post("/game/night/phase/step", json={"step": "Poisoner"})
         response = await client.get("/game/state")
         assert response.status_code == 200
-        assert response.json()["current_night_step"] == "Poisoner"
-        assert response.json()["is_first_night"] is True
+        first_night_state = response.json()
+        assert first_night_state["current_night_step"] == "Poisoner"
+        assert first_night_state["is_first_night"] is True
+
+        # Store first night steps for comparison
+        first_night_steps = first_night_state["night_steps"]
+        first_night_step_names = [s["name"] for s in first_night_steps]
 
         # Change to subsequent night (resets to Dusk)
         await client.post("/game/night/phase/first_night", json={"is_first_night": False})
@@ -276,6 +290,24 @@ async def test_get_game_state_reflects_night_phase_changes():
         # Verify night phase changes are reflected (should be Dusk after changing night type)
         assert state["current_night_step"] == "Dusk"
         assert state["is_first_night"] is False
+
+        # Verify night_steps changed to subsequent night steps
+        other_night_steps = state["night_steps"]
+        other_night_step_names = [s["name"] for s in other_night_steps]
+
+        # Both should have Dusk and Dawn (always shown)
+        assert "Dusk" in first_night_step_names
+        assert "Dusk" in other_night_step_names
+        assert "Dawn" in first_night_step_names
+        assert "Dawn" in other_night_step_names
+
+        # First night has Minion Info and Demon Info (always shown on first night)
+        assert "Minion Info" in first_night_step_names
+        assert "Demon Info" in first_night_step_names
+
+        # Subsequent nights don't have Minion Info or Demon Info
+        assert "Minion Info" not in other_night_step_names
+        assert "Demon Info" not in other_night_step_names
 
 
 @pytest.mark.anyio

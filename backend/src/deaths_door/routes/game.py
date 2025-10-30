@@ -129,6 +129,10 @@ class GameStateResponse(BaseModel):
         ...,
         description="Roles that have been included but not yet assigned to players",
     )
+    night_steps: list[NightStep] = Field(
+        ...,
+        description="Night steps for the current night (filtered based on is_first_night)",
+    )
 
 
 @router.get("/state")
@@ -137,6 +141,12 @@ async def get_game_state(
 ) -> GameStateResponse:
     """Get the complete game state in a single request."""
     async with game_ctx as game:
+        # Get appropriate night steps based on is_first_night
+        if game.is_first_night:
+            night_steps = list(game.get_first_night_steps())
+        else:
+            night_steps = list(game.get_other_night_steps())
+
         return GameStateResponse(
             script_name=game.script.name.value,
             players=[player.to_out() for player in game.players],
@@ -145,6 +155,7 @@ async def get_game_state(
             should_reveal_roles=game.should_reveal_roles,
             status_effects=game.get_status_effects(),
             included_roles=[role.to_out() for role in game.included_roles],
+            night_steps=night_steps,
         )
 
 
