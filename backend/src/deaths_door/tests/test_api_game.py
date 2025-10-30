@@ -66,12 +66,49 @@ async def test_set_first_night():
         get_data = get_response.json()
         assert get_data["is_first_night"] is False
 
-        # Set back to True
+        # Set back to True (should also reset to Dusk)
         response2 = await client.post(
             "/game/night/phase/first_night", json={"is_first_night": True}
         )
         assert response2.status_code == 200
         assert response2.json()["is_first_night"] is True
+        assert response2.json()["current_night_step"] == "Dusk"
+
+
+@pytest.mark.anyio
+async def test_set_first_night_resets_to_dusk():
+    """Test that changing is_first_night always resets current_night_step to Dusk."""
+    async with get_test_client() as client:
+        await setup_game_with_roles(client)
+
+        # Start at Dusk on first night
+        phase = await client.get("/game/night/phase")
+        assert phase.json()["current_night_step"] == "Dusk"
+        assert phase.json()["is_first_night"] is True
+
+        # Move to a different step
+        await client.post("/game/night/phase/step", json={"step": "Poisoner"})
+        phase = await client.get("/game/night/phase")
+        assert phase.json()["current_night_step"] == "Poisoner"
+
+        # Change to subsequent night - should reset to Dusk
+        response = await client.post(
+            "/game/night/phase/first_night", json={"is_first_night": False}
+        )
+        assert response.json()["current_night_step"] == "Dusk"
+        assert response.json()["is_first_night"] is False
+
+        # Move to another step on subsequent night
+        await client.post("/game/night/phase/step", json={"step": "Imp"})
+        phase = await client.get("/game/night/phase")
+        assert phase.json()["current_night_step"] == "Imp"
+
+        # Change back to first night - should reset to Dusk again
+        response = await client.post(
+            "/game/night/phase/first_night", json={"is_first_night": True}
+        )
+        assert response.json()["current_night_step"] == "Dusk"
+        assert response.json()["is_first_night"] is True
 
 
 @pytest.mark.anyio
@@ -143,15 +180,12 @@ async def test_night_phase_workflow():
         # End first night with Dawn
         await client.post("/game/night/phase/step", json={"step": "Dawn"})
 
-        # Start second night - switch to other nights and reset to Dusk
-        await client.post("/game/night/phase/first_night", json={"is_first_night": False})
-        await client.post("/game/night/phase/step", json={"step": "Dusk"})
+        # Start second night - switch to other nights (automatically resets to Dusk)
+        response = await client.post("/game/night/phase/first_night", json={"is_first_night": False})
 
-        # Verify state
-        phase2 = await client.get("/game/night/phase")
-        data2 = phase2.json()
-        assert data2["current_night_step"] == "Dusk"
-        assert data2["is_first_night"] is False
+        # Verify state was reset to Dusk
+        assert response.json()["current_night_step"] == "Dusk"
+        assert response.json()["is_first_night"] is False
 
 
 @pytest.mark.anyio
@@ -223,18 +257,24 @@ async def test_get_game_state_reflects_night_phase_changes():
     async with get_test_client() as client:
         await setup_game_with_roles(client)
 
-        # Modify night phase
+        # Set step to Poisoner and verify it's reflected in state
         await client.post("/game/night/phase/step", json={"step": "Poisoner"})
-        await client.post("/game/night/phase/first_night", json={"is_first_night": False})
-
-        # Get game state
         response = await client.get("/game/state")
         assert response.status_code == 200
+        assert response.json()["current_night_step"] == "Poisoner"
+        assert response.json()["is_first_night"] is True
 
-        state = response.json()
+        # Change to subsequent night (resets to Dusk)
+        await client.post("/game/night/phase/first_night", json={"is_first_night": False})
 
-        # Verify night phase changes are reflected
-        assert state["current_night_step"] == "Poisoner"
+        # Get game state and verify changes
+        response2 = await client.get("/game/state")
+        assert response2.status_code == 200
+
+        state = response2.json()
+
+        # Verify night phase changes are reflected (should be Dusk after changing night type)
+        assert state["current_night_step"] == "Dusk"
         assert state["is_first_night"] is False
 
 

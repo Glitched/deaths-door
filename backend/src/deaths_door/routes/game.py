@@ -214,9 +214,10 @@ async def set_first_night(
     req: SetFirstNightRequest,
     game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
 ) -> NightPhaseResponse:
-    """Set whether this is the first night."""
+    """Set whether this is the first night (automatically resets to Dusk)."""
     async with game_ctx as game:
         game.is_first_night = req.is_first_night
+        game.current_night_step = "Dusk"
         return NightPhaseResponse(
             current_night_step=game.current_night_step,
             is_first_night=game.is_first_night,
