@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .routes import characters, game, players, scripts, sounds, timer
+from .routes import characters, game, lights, players, scripts, sounds, timer
 
 app = FastAPI(
     title="Death's Door - Blood on the Clocktower API",
@@ -72,6 +72,10 @@ to enable/disable. When disabled, `GET /players/name/{name}` will wait up to 10 
             "description": "Play sound effects for game events. Requires local sound files.",
         },
         {
+            "name": "Lighting",
+            "description": "Control DMX lighting effects, moving head lights, and fog machine. Supports scenes, calibration, and granular control.",
+        },
+        {
             "name": "System",
             "description": "Health checks and static file serving for the web interface.",
         },
@@ -83,6 +87,7 @@ app.include_router(game.router)
 app.include_router(timer.timer)
 app.include_router(players.router)
 app.include_router(characters.router)
+app.include_router(lights.router)
 
 app.mount("/static/", StaticFiles(directory="static", html=True), name="static")
 
