@@ -346,3 +346,62 @@ async def test_game_workflow_integration():
         # Traveler should be present
         traveler = next(p for p in final_players if p["name"] == "Traveler_Henry")
         assert traveler["character"]["name"] == "Beggar"
+
+
+@pytest.mark.anyio
+async def test_concurrent_role_reveal_no_deadlock():
+    """
+    Test that multiple concurrent requests for player roles don't deadlock
+    while waiting for role reveal to be enabled.
+
+    This simulates the scenario where 10 players are waiting on the character
+    reveal page while the storyteller enables role visibility.
+    """
+    import anyio
+
+    async with get_test_client() as client:
+        # Set up game with enough roles for 10 players
+        roles = [
+            "Imp",
+            "Chef",
+            "Butler",
+            "Baron",
+            "Librarian",
+            "Empath",
+            "Mayor",
+            "Washerwoman",
+            "Investigator",
+            "Monk",
+        ]
+        await setup_game_with_roles(client, roles=roles)
+
+        # Add 10 players to simulate the real scenario
+        player_names = [f"Player{i}" for i in range(1, 11)]
+        await add_test_players(client, player_names)
+
+        # Track results from concurrent requests
+        results = []
+
+        async def get_player_role_after_delay(player_name: str):
+            """Request player role - will wait for reveal flag"""
+            response = await client.get(f"/players/name/{player_name}")
+            results.append((player_name, response.status_code))
+
+        async def enable_reveal_after_delay():
+            """Enable role reveal after a short delay"""
+            await anyio.sleep(0.2)  # Let requests start waiting first
+            await enable_role_reveal(client)
+
+        # Start all 10 player requests concurrently, plus the reveal enabler
+        async with anyio.create_task_group() as tg:
+            # All players request their roles
+            for name in player_names:
+                tg.start_soon(get_player_role_after_delay, name)
+
+            # Storyteller enables reveal after a delay
+            tg.start_soon(enable_reveal_after_delay)
+
+        # All requests should succeed without deadlock
+        assert len(results) == 10
+        for player_name, status_code in results:
+            assert status_code == 200, f"Player {player_name} failed with status {status_code}"

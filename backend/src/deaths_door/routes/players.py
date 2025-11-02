@@ -1,13 +1,14 @@
 import asyncio
 from contextlib import AbstractAsyncContextManager
 
+import anyio
 from fastapi import APIRouter, Depends, Path
 from fastapi.exceptions import HTTPException
 from pydantic import BaseModel, Field
 
 from ..alignment import Alignment
 from ..game import Game
-from ..game_manager import get_current_game
+from ..game_manager import game_manager, get_current_game
 from ..player import Player, PlayerOut
 
 
@@ -137,34 +138,39 @@ async def list_players(
 )
 async def get_player_role(
     name: str = Path(..., description="Player's name", examples=["Alice"]),
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
 ) -> PlayerOut:
     """Get the role of a player in the current game (waits for role reveal if needed)."""
-    async with game_ctx as game:
-        # Check if player exists first
+    # First check if player exists
+    async with game_manager.locked_game() as game:
         player = get_player_or_404(game, name)
 
-        ROLE_REVEAL_TIMEOUT_ATTEMPTS = 100
-        POLLING_INTERVAL_SECONDS = 0.1
+    ROLE_REVEAL_TIMEOUT_ATTEMPTS = 100
+    POLLING_INTERVAL_SECONDS = 0.1
 
-        polling_attempts = 0
-        while (
-            not game.should_reveal_roles
-            and polling_attempts < ROLE_REVEAL_TIMEOUT_ATTEMPTS
-        ):
-            await asyncio.sleep(POLLING_INTERVAL_SECONDS)
+    # Poll for role reveal WITHOUT holding the lock
+    # This prevents deadlock when multiple players are waiting for reveal
+    polling_attempts = 0
+    should_reveal = False
+    while not should_reveal and polling_attempts < ROLE_REVEAL_TIMEOUT_ATTEMPTS:
+        async with game_manager.locked_game() as game:
+            should_reveal = game.should_reveal_roles
+        if not should_reveal:
+            await anyio.sleep(POLLING_INTERVAL_SECONDS)
             polling_attempts += 1
 
-        if polling_attempts >= ROLE_REVEAL_TIMEOUT_ATTEMPTS:
-            timeout_seconds = ROLE_REVEAL_TIMEOUT_ATTEMPTS * POLLING_INTERVAL_SECONDS
-            raise HTTPException(
-                status_code=408,
-                detail=(
-                    f"Role reveal timed out after {timeout_seconds}s. "
-                    "Check if roles are set to be revealed."
-                ),
-            )
+    if polling_attempts >= ROLE_REVEAL_TIMEOUT_ATTEMPTS:
+        timeout_seconds = ROLE_REVEAL_TIMEOUT_ATTEMPTS * POLLING_INTERVAL_SECONDS
+        raise HTTPException(
+            status_code=408,
+            detail=(
+                f"Role reveal timed out after {timeout_seconds}s. "
+                "Check if roles are set to be revealed."
+            ),
+        )
 
+    # Return the player data
+    async with game_manager.locked_game() as game:
+        player = get_player_or_404(game, name)
         return player.to_out()
 
 

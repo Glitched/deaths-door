@@ -145,6 +145,7 @@ async def get_game_state(
     game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
 ) -> GameStateResponse:
     """Get the complete game state in a single request."""
+    # Get game state first
     async with game_ctx as game:
         # Get appropriate night steps based on is_first_night
         if game.is_first_night:
@@ -152,24 +153,29 @@ async def get_game_state(
         else:
             night_steps = list(game.get_other_night_steps())
 
-        # Get timer state
-        timer_is_running = await timer_routes.state.get_is_running()
-        timer_seconds = await timer_routes.state.get_seconds()
+        # Capture all game state while holding the lock
+        game_state = {
+            "script_name": game.script.name.value,
+            "players": [player.to_out() for player in game.players],
+            "current_night_step": game.current_night_step,
+            "is_first_night": game.is_first_night,
+            "should_reveal_roles": game.should_reveal_roles,
+            "status_effects": game.get_status_effects(),
+            "included_roles": [role.to_out() for role in game.included_roles],
+            "night_steps": night_steps,
+        }
 
-        return GameStateResponse(
-            script_name=game.script.name.value,
-            players=[player.to_out() for player in game.players],
-            current_night_step=game.current_night_step,
-            is_first_night=game.is_first_night,
-            should_reveal_roles=game.should_reveal_roles,
-            status_effects=game.get_status_effects(),
-            included_roles=[role.to_out() for role in game.included_roles],
-            night_steps=night_steps,
-            timer=timer_routes.TimerStateResponse(
-                is_running=timer_is_running,
-                seconds=timer_seconds,
-            ),
-        )
+    # Get timer state AFTER releasing game lock to avoid lock ordering issues
+    timer_is_running = await timer_routes.state.get_is_running()
+    timer_seconds = await timer_routes.state.get_seconds()
+
+    return GameStateResponse(
+        **game_state,
+        timer=timer_routes.TimerStateResponse(
+            is_running=timer_is_running,
+            seconds=timer_seconds,
+        ),
+    )
 
 
 class NightPhaseResponse(BaseModel):
