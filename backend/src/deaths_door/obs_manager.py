@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 import uuid
 from typing import Any
 
@@ -13,6 +14,48 @@ logger = logging.getLogger(__name__)
 TIMER_NAME = "Countdown Timer"
 SCENE_NAME = "Countdown Scene"
 FONT_SIZE = 240
+
+
+def get_text_source_type() -> str:
+    """Get the appropriate OBS text source type for the current platform."""
+    if sys.platform == "win32":
+        return "text_gdiplus"
+    return "text_ft2_source_v2"
+
+
+def get_font_settings(face: str, size: int) -> dict[str, Any]:
+    """Get font settings appropriate for the current platform."""
+    if sys.platform == "win32":
+        return {
+            "face": face,
+            "size": size,
+            "style": "Regular",
+            "flags": 0,
+        }
+    return {
+        "face": face,
+        "size": size,
+    }
+
+
+def get_text_input_settings(
+    text: str, font_face: str, font_size: int
+) -> dict[str, Any]:
+    """Get text input settings appropriate for the current platform."""
+    font = get_font_settings(font_face, font_size)
+
+    if sys.platform == "win32":
+        return {
+            "text": text,
+            "font": font,
+            "color": 0xFFFFFFFF,  # White in ABGR
+        }
+    return {
+        "text": text,
+        "font": font,
+        "color1": 0xFFFFFFFF,
+        "color2": 0xFF000069,
+    }
 
 
 class ObsManager:
@@ -144,31 +187,21 @@ class ObsManager:
             self.set_current_scene()
 
             # Add a text source to the scene for the countdown timer.
-            # Try with custom font, fallback to Arial if not available
+            # Try with custom font, fallback to Arial if not available.
+            # Uses platform-specific source (GDI+ on Windows, FreeType2 elsewhere).
+            source_type = get_text_source_type()
             try:
                 el = self.create_input(
                     TIMER_NAME,
-                    "text_ft2_source_v2",
-                    {
-                        "text": "5:00",
-                        "font": {"size": FONT_SIZE, "face": "Help Me"},
-                        "color": 0xFFFFFFFF,
-                        "color1": 0xFF001FEF,
-                        "color2": 0xFF000069,
-                    },
+                    source_type,
+                    get_text_input_settings("5:00", "Help Me", FONT_SIZE),
                 )
             except Exception:
                 logger.warning("Font 'Help Me' not found, using Arial as fallback")
                 el = self.create_input(
                     TIMER_NAME,
-                    "text_ft2_source_v2",
-                    {
-                        "text": "5:00",
-                        "font": {"size": FONT_SIZE, "face": "Arial"},
-                        "color": 0xFFFFFFFF,
-                        "color1": 0xFF001FEF,
-                        "color2": 0xFF000069,
-                    },
+                    source_type,
+                    get_text_input_settings("5:00", "Arial", FONT_SIZE),
                 )
 
             self.input_id = el.sceneItemId
