@@ -48,7 +48,7 @@ class TimerState:
         while True:
             async with self._lock:
                 if self.is_running:
-                    self._obs_manager.update_timer(self.seconds)
+                    await self._obs_manager.update_timer_async(self.seconds)
                     if self.seconds > 0:
                         self.seconds -= 1
                     else:

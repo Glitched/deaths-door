@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from obswebsocket import obsws, requests
@@ -81,10 +83,18 @@ class ObsManager:
     connected: bool = False
     """Whether we're currently connected to OBS."""
 
+    _video_settings: VideoSettings | None = None
+    """Cached video settings (canvas dimensions). Reset on reconnect."""
+
+    _executor: ThreadPoolExecutor
+    """Thread pool for running blocking OBS calls without blocking the event loop."""
+
     def __init__(self, host: str, port: int, password: str) -> None:
         """Create a new connection to OBS."""
         self.ws = obsws(host, port, password)
         self.connected = False
+        self._video_settings = None
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="obs")
         try:
             self.ws.connect()
             self.connected = True
@@ -206,26 +216,29 @@ class ObsManager:
 
             self.input_id = el.sceneItemId
             self.set_scene_item_transform(self.input_id, {"scaleX": 2, "scaleY": 2})
+
+            # Cache video settings (canvas dimensions don't change mid-stream)
+            self._video_settings = self.get_video_settings()
         except Exception as e:
             logger.error(f"Failed to setup OBS scene: {e}")
             self.connected = False
+            self._video_settings = None
             raise
 
-    def update_timer(self, seconds: int) -> None:
-        """Update the timer."""
-        if not self.connected:
+    def _update_timer_sync(self, seconds: int) -> None:
+        """Update the timer (blocking). Use update_timer_async() from async code."""
+        if not self.connected or self._video_settings is None:
             return  # Gracefully skip if not connected
 
         try:
             # Set the text to the current time
-            minutes, seconds = divmod(seconds, 60)
-            time_text = f"{minutes:01}:{seconds:02}"
+            minutes, secs = divmod(seconds, 60)
+            time_text = f"{minutes:01}:{secs:02}"
             self.set_input_settings(TIMER_NAME, {"text": time_text})
 
-            # Center the text
+            # Center the text using cached video settings
             transform = self.get_scene_item_transform(self.input_id)
-            screen = self.get_video_settings()
-            x = (screen.baseWidth - transform.width) / 2
+            x = (self._video_settings.baseWidth - transform.width) / 2
             self.set_scene_item_transform(self.input_id, {"positionX": x})
 
         except Exception as e:
@@ -234,3 +247,33 @@ class ObsManager:
                 f"OBS connection lost during timer update: {e}. Disabling OBS."
             )
             self.connected = False
+            self._video_settings = None
+
+    async def update_timer_async(self, seconds: int) -> None:
+        """Update the timer without blocking the event loop."""
+        if not self.connected or self._video_settings is None:
+            return
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(self._executor, self._update_timer_sync, seconds)
+
+    def close(self) -> None:
+        """Close the OBS connection and clean up resources."""
+        self._executor.shutdown(wait=False, cancel_futures=True)
+        if self.connected:
+            try:
+                self.ws.disconnect()
+            except Exception as e:
+                logger.debug(f"Error disconnecting from OBS: {e}")
+        self.connected = False
+        self._video_settings = None
+        logger.info("Closed OBS connection")
+
+    def __enter__(self) -> ObsManager:
+        """Context manager entry."""
+        return self
+
+    def __exit__(
+        self, exc_type: type | None, exc_val: Exception | None, exc_tb: object
+    ) -> None:
+        """Context manager exit with cleanup."""
+        self.close()
