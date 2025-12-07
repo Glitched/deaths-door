@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import logging
 from dataclasses import dataclass
@@ -49,8 +50,9 @@ class LightingScene(str, Enum):
 class OpenDMXController:
     """
     Simple OpenDMX/FTDI USB to DMX controller.
-    
+
     Communicates directly with FTDI-based OpenDMX interfaces using pyserial.
+    Supports context manager for automatic cleanup.
     """
 
     def __init__(self, port: str | None = None, baudrate: int = 250000):
@@ -61,20 +63,24 @@ class OpenDMXController:
             port: Serial port (e.g., 'COM3' on Windows, '/dev/ttyUSB0' on Linux)
                   If None, will attempt to auto-detect FTDI device
             baudrate: Baud rate for DMX (default 250000 for OpenDMX)
+
         """
         self.dmx_data = [0] * 512  # DMX universe: 512 channels
         self.serial_port = None
-        
+        self._executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="dmx"
+        )
+
         if not SERIAL_AVAILABLE:
             raise RuntimeError("pyserial not available")
-        
+
         # Auto-detect FTDI device if no port specified
         if port is None:
             port = self._find_ftdi_port()
-        
+
         if port is None:
             raise RuntimeError("No FTDI/OpenDMX device found")
-        
+
         # Open serial connection
         try:
             self.serial_port = serial.Serial(
@@ -95,10 +101,11 @@ class OpenDMXController:
 
         Returns:
             Port name if found, None otherwise
+
         """
         if not SERIAL_AVAILABLE:
             return None
-            
+
         ports = serial.tools.list_ports.comports()
         for port in ports:
             # Look for FTDI devices in description, manufacturer, or VID
@@ -109,11 +116,14 @@ class OpenDMXController:
                 "FTDI" in (port.manufacturer or "").upper() or
                 "VID:PID=0403:" in (port.hwid or "").upper()
             )
-            
+
             if is_ftdi:
-                logger.info(f"Found FTDI device: {port.device} - {port.description} (Manufacturer: {port.manufacturer})")
+                logger.info(
+                    f"Found FTDI device: {port.device} - {port.description} "
+                    f"(Manufacturer: {port.manufacturer})"
+                )
                 return port.device
-        
+
         logger.warning("No FTDI device found")
         return None
 
@@ -124,14 +134,15 @@ class OpenDMXController:
         Args:
             channel: DMX channel number (1-512)
             value: Channel value (0-255)
+
         """
         if 1 <= channel <= 512:
             self.dmx_data[channel - 1] = max(0, min(255, value))
         else:
             logger.warning(f"Invalid DMX channel: {channel}")
 
-    def render(self) -> None:
-        """Send the current DMX data to the device."""
+    def _render_sync(self) -> None:
+        """Send the current DMX data to the device (synchronous/blocking)."""
         if self.serial_port and self.serial_port.is_open:
             try:
                 # OpenDMX protocol: send all 512 channels
@@ -139,11 +150,40 @@ class OpenDMXController:
             except Exception as e:
                 logger.error(f"Failed to send DMX data: {e}")
 
+    def render(self) -> None:
+        """
+        Send the current DMX data to the device (synchronous).
+
+        For async contexts, use render_async() instead to avoid blocking.
+        """
+        self._render_sync()
+
+    async def render_async(self) -> None:
+        """Send the current DMX data to the device (async, non-blocking)."""
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(self._executor, self._render_sync)
+        except RuntimeError:
+            # No running loop - fall back to synchronous
+            self._render_sync()
+
     def close(self) -> None:
-        """Close the serial connection."""
+        """Close the serial connection and cleanup resources."""
+        # Shutdown executor
+        self._executor.shutdown(wait=True, cancel_futures=True)
+
+        # Close serial port
         if self.serial_port and self.serial_port.is_open:
             self.serial_port.close()
             logger.info("Closed OpenDMX connection")
+
+    def __enter__(self) -> OpenDMXController:
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Context manager exit with cleanup."""
+        self.close()
 
 
 class XPCLEOYZMovingHead:
@@ -153,7 +193,9 @@ class XPCLEOYZMovingHead:
     11-channel DMX configuration from manual.
     """
 
-    def __init__(self, controller: OpenDMXController, start_channel: int, name: str = ""):
+    def __init__(
+        self, controller: OpenDMXController, start_channel: int, name: str = ""
+    ):
         """
         Initialize the moving head fixture.
 
@@ -161,6 +203,7 @@ class XPCLEOYZMovingHead:
             controller: OpenDMX controller instance
             start_channel: Starting DMX channel (1-512)
             name: Fixture name
+
         """
         self.controller = controller
         self.start_channel = start_channel
@@ -173,6 +216,7 @@ class XPCLEOYZMovingHead:
         Args:
             offset: Channel offset (0-10 for 11 channels)
             value: Channel value (0-255)
+
         """
         channel = self.start_channel + offset
         self.controller.set_channel(channel, value)
@@ -186,6 +230,7 @@ class XPCLEOYZMovingHead:
             pan: Pan value (0-255)
             tilt: Tilt value (0-255)
             fine: Whether to use fine adjustment (default True)
+
         """
         self.set_channel(0, pan)  # Pan
         self.set_channel(2, tilt)  # Tilt
@@ -199,6 +244,7 @@ class XPCLEOYZMovingHead:
 
         Args:
             color: Color value (10-139: specific colors, 140-255: auto change)
+
         """
         self.set_channel(4, color)
 
@@ -208,6 +254,7 @@ class XPCLEOYZMovingHead:
 
         Args:
             brightness: Brightness value (0-255)
+
         """
         self.set_channel(8, brightness)
 
@@ -217,6 +264,7 @@ class XPCLEOYZMovingHead:
 
         Args:
             speed: Strobe speed (0-255, 0 = off)
+
         """
         self.set_channel(7, speed)
 
@@ -234,7 +282,9 @@ class XPCLEOYZMovingHead:
 class FogMachineStub:
     """Stub fixture for fog machine - to be configured later."""
 
-    def __init__(self, controller: OpenDMXController, start_channel: int, name: str = ""):
+    def __init__(
+        self, controller: OpenDMXController, start_channel: int, name: str = ""
+    ):
         """
         Initialize the fog machine stub.
 
@@ -242,6 +292,7 @@ class FogMachineStub:
             controller: OpenDMX controller instance
             start_channel: Starting DMX channel
             name: Fixture name
+
         """
         self.controller = controller
         self.start_channel = start_channel
@@ -264,6 +315,7 @@ class PlayerPosition:
             player_num: Player number (chair position)
             pan: Pan value (0-255)
             tilt: Tilt value (0-255)
+
         """
         self.player_num = player_num
         self.pan = pan
@@ -315,6 +367,7 @@ class LightingSequence:
 
         Args:
             name: Name of the sequence
+
         """
         self.name = name
         self.cues: list[LightingCue] = []
@@ -331,6 +384,7 @@ class LightingSequence:
             timestamp: Time in seconds from start
             action: Function to execute
             description: Description of the cue
+
         """
         cue = LightingCue(timestamp, action, description)
         self.cues.append(cue)
@@ -352,7 +406,14 @@ class LightingSequence:
             return
 
         self.is_running = True
-        start_time = asyncio.get_event_loop().time()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.error(f"Cannot play sequence {self.name}: no running event loop")
+            self.is_running = False
+            return
+
+        start_time = loop.time()
 
         try:
             for cue in self.cues:
@@ -360,7 +421,7 @@ class LightingSequence:
                     break
 
                 # Calculate how long to wait until this cue
-                current_time = asyncio.get_event_loop().time()
+                current_time = loop.time()
                 elapsed = current_time - start_time
                 wait_time = cue.timestamp - elapsed
 
@@ -389,6 +450,7 @@ class LightingSequence:
 
         Returns:
             The asyncio task running the sequence
+
         """
         self._task = asyncio.create_task(self.play())
         return self._task
@@ -398,10 +460,12 @@ class LightingManager:
     """
     Singleton manager for DMX lighting control.
 
-    Manages moving head lights and fog machine with graceful fallback if hardware unavailable.
+    Manages moving head lights and fog machine with graceful fallback
+    if hardware unavailable.
     """
 
     _instance: None | LightingManager = None
+    _initialized: bool = False
 
     controller: OpenDMXController | None
     light1: XPCLEOYZMovingHead | None
@@ -421,8 +485,8 @@ class LightingManager:
 
     def __init__(self) -> None:
         """Initialize the DMX controller and fixtures."""
-        # Only initialize once
-        if hasattr(self, "connected"):
+        # Only initialize once using class-level flag
+        if LightingManager._initialized:
             return
 
         self.connected = False
@@ -431,7 +495,9 @@ class LightingManager:
         self.light2 = None
         self.fog = None
         self.positions = {}
-        self.positions_file = Path("src/assets/lighting_positions.json")
+        # Use proper path resolution relative to this file
+        base_dir = Path(__file__).parent.parent.parent
+        self.positions_file = base_dir / "assets" / "lighting_positions.json"
         self.sequences = {}
         self.active_sequence = None
 
@@ -439,7 +505,7 @@ class LightingManager:
         try:
             if not SERIAL_AVAILABLE:
                 raise RuntimeError("pyserial library not available")
-            
+
             self.controller = OpenDMXController()
             self.connected = True
             logger.info("Successfully initialized DMX controller")
@@ -476,6 +542,9 @@ class LightingManager:
 
         # Load calibrated positions
         self._load_positions()
+
+        # Mark as initialized only after successful initialization
+        LightingManager._initialized = True
 
     def _load_positions(self) -> None:
         """Load calibrated player positions from file."""
@@ -515,6 +584,7 @@ class LightingManager:
             fixture_id: Fixture ID (1 or 2 for lights, 3 for fog)
             channel: Channel number (1-11 for moving heads)
             value: Channel value (0-255)
+
         """
         if not self.connected:
             logger.debug("DMX not connected, skipping channel set")
@@ -542,6 +612,7 @@ class LightingManager:
             pan: Pan value (0-255)
             tilt: Tilt value (0-255)
             fine: Whether to use fine adjustment
+
         """
         if not self.connected:
             logger.debug("DMX not connected, skipping position set")
@@ -571,6 +642,7 @@ class LightingManager:
             player_num: Player number (chair position)
             pan: Pan value (0-255)
             tilt: Tilt value (0-255)
+
         """
         self.positions[player_num] = PlayerPosition(player_num, pan, tilt)
         self._save_positions()
@@ -586,6 +658,7 @@ class LightingManager:
             player_num: Player number to spotlight
             brightness: Brightness level (0-255)
             fixture_id: Which light to use (1 or 2)
+
         """
         if not self.connected:
             logger.debug("DMX not connected, skipping spotlight")
@@ -615,6 +688,7 @@ class LightingManager:
 
         Args:
             scene_name: Name of the scene to trigger
+
         """
         if not self.connected:
             logger.debug("DMX not connected, skipping scene trigger")
@@ -700,7 +774,9 @@ class LightingManager:
             self.light2.set_dimmer(255)
             self.light2.set_strobe(0)
 
-    def _get_fixture(self, fixture_id: int) -> XPCLEOYZMovingHead | FogMachineStub | None:
+    def _get_fixture(
+        self, fixture_id: int
+    ) -> XPCLEOYZMovingHead | FogMachineStub | None:
         """Get fixture by ID."""
         if fixture_id == 1:
             return self.light1
@@ -714,6 +790,24 @@ class LightingManager:
         """List all available scenes."""
         return [scene.value for scene in LightingScene]
 
+    def close(self) -> None:
+        """Close the DMX controller and cleanup resources."""
+        if self.controller:
+            self.controller.close()
+            self.controller = None
+        self.connected = False
+        # Reset initialization flag to allow re-initialization
+        LightingManager._initialized = False
+        logger.info("Closed LightingManager")
+
+    def __enter__(self) -> LightingManager:
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Context manager exit with cleanup."""
+        self.close()
+
     # Timeline/Sequence Methods
     def create_sequence(self, name: str) -> LightingSequence:
         """
@@ -724,6 +818,7 @@ class LightingManager:
 
         Returns:
             The created sequence
+
         """
         sequence = LightingSequence(name)
         self.sequences[name] = sequence
@@ -738,6 +833,7 @@ class LightingManager:
 
         Returns:
             The sequence if found, None otherwise
+
         """
         return self.sequences.get(name)
 
@@ -750,6 +846,7 @@ class LightingManager:
 
         Returns:
             The task running the sequence, or None if sequence not found
+
         """
         sequence = self.get_sequence(name)
         if sequence is None:
