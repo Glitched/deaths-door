@@ -66,6 +66,8 @@ class ObsManager:
 
     Best OBS Websocket API documentation I've found:
     https://wiki.streamer.bot/en/Broadcasters/OBS/Requests
+
+    Supports automatic reconnection with exponential backoff if connection is lost.
     """
 
     ws: obsws
@@ -89,21 +91,99 @@ class ObsManager:
     _executor: ThreadPoolExecutor
     """Thread pool for running blocking OBS calls without blocking the event loop."""
 
+    # Connection credentials for reconnection
+    _host: str
+    _port: int
+    _password: str
+
+    # Reconnection state
+    _reconnect_task: asyncio.Task[None] | None = None
+    _reconnect_delay: float = 1.0
+    _max_reconnect_delay: float = 30.0
+    _reconnect_enabled: bool = True
+
     def __init__(self, host: str, port: int, password: str) -> None:
         """Create a new connection to OBS."""
+        self._host = host
+        self._port = port
+        self._password = password
         self.ws = obsws(host, port, password)
         self.connected = False
         self._video_settings = None
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="obs")
+        self._reconnect_task = None
+        self._reconnect_delay = 1.0
+        self._reconnect_enabled = True
+
+        if self._try_connect():
+            logger.info("Successfully connected to OBS WebSocket")
+        else:
+            logger.warning("Failed to connect to OBS. Will retry in background.")
+            self._schedule_reconnect()
+
+        self.run_id = str(uuid.uuid4())
+
+    def _try_connect(self) -> bool:
+        """Attempt to connect to OBS. Returns True on success."""
         try:
+            self.ws = obsws(self._host, self._port, self._password)
             self.ws.connect()
             self.connected = True
-            logger.info("Successfully connected to OBS WebSocket")
+            self._reconnect_delay = 1.0  # Reset backoff on success
+            return True
         except Exception as e:
-            logger.warning(
-                f"Failed to connect to OBS: {e}. Continuing without OBS support."
-            )
-        self.run_id = str(uuid.uuid4())
+            logger.debug(f"Connection attempt failed: {e}")
+            self.connected = False
+            return False
+
+    def _schedule_reconnect(self) -> None:
+        """Schedule a reconnection attempt if not already running."""
+        if not self._reconnect_enabled:
+            return
+        if self._reconnect_task is not None and not self._reconnect_task.done():
+            return  # Already reconnecting
+        try:
+            loop = asyncio.get_running_loop()
+            self._reconnect_task = loop.create_task(self._reconnect_loop())
+        except RuntimeError:
+            # No running event loop - can't schedule async reconnect
+            logger.debug("No event loop available for reconnection scheduling")
+
+    async def _reconnect_loop(self) -> None:
+        """Background task that attempts to reconnect with exponential backoff."""
+        while not self.connected and self._reconnect_enabled:
+            logger.info(f"Attempting OBS reconnection in {self._reconnect_delay:.1f}s")
+            await asyncio.sleep(self._reconnect_delay)
+
+            if not self._reconnect_enabled:
+                break
+
+            # Run blocking connect in executor
+            loop = asyncio.get_running_loop()
+            success = await loop.run_in_executor(self._executor, self._try_connect)
+
+            if success:
+                logger.info("Reconnected to OBS WebSocket")
+                # Re-setup the scene with a new run_id
+                self.run_id = str(uuid.uuid4())
+                try:
+                    await loop.run_in_executor(self._executor, self.setup_obs_scene)
+                    logger.info("OBS scene re-initialized after reconnect")
+                except Exception as e:
+                    logger.error(f"Failed to setup OBS scene after reconnect: {e}")
+                    self.connected = False
+                    # Continue trying to reconnect
+            else:
+                # Exponential backoff, capped at max
+                self._reconnect_delay = min(
+                    self._reconnect_delay * 2, self._max_reconnect_delay
+                )
+
+    def _mark_disconnected(self) -> None:
+        """Mark as disconnected and trigger reconnection."""
+        self.connected = False
+        self._video_settings = None
+        self._schedule_reconnect()
 
     # Sadly, the OBS websocket API is not typed.
     def call(self, request: Any) -> Any:
@@ -242,12 +322,9 @@ class ObsManager:
             self.set_scene_item_transform(self.input_id, {"positionX": x})
 
         except Exception as e:
-            # Connection lost during operation - log once and mark disconnected
-            logger.warning(
-                f"OBS connection lost during timer update: {e}. Disabling OBS."
-            )
-            self.connected = False
-            self._video_settings = None
+            # Connection lost during operation - trigger reconnection
+            logger.warning(f"OBS connection lost during timer update: {e}")
+            self._mark_disconnected()
 
     async def update_timer_async(self, seconds: int) -> None:
         """Update the timer without blocking the event loop."""
@@ -258,6 +335,11 @@ class ObsManager:
 
     def close(self) -> None:
         """Close the OBS connection and clean up resources."""
+        # Stop reconnection attempts
+        self._reconnect_enabled = False
+        if self._reconnect_task is not None and not self._reconnect_task.done():
+            self._reconnect_task.cancel()
+
         self._executor.shutdown(wait=False, cancel_futures=True)
         if self.connected:
             try:
