@@ -170,6 +170,13 @@ class Game:
             for player in self.players
         )
 
+    def has_dead_character_named(self, character_name: str) -> bool:
+        """Check if any dead player has the specified character."""
+        return any(
+            player.character.is_named(character_name) and not player.is_alive
+            for player in self.players
+        )
+
     def get_first_night_steps(self) -> Generator[NightStep, None, None]:
         """Get the first night steps."""
         return self.filter_active_night_steps(self.script.get_first_night_steps())
@@ -183,8 +190,18 @@ class Game:
     ) -> Generator[NightStep, None, None]:
         """Yield night steps that should be shown based on current game state."""
         for step in steps:
-            should_show = step.always_show or self.has_living_character_named(step.name)
-            if should_show:
+            # Always show structural steps (Dusk, Dawn, etc.)
+            if step.always_show:
+                yield step
+                continue
+
+            # Show when character is dead (e.g., Ravenkeeper)
+            if step.show_when_dead and self.has_dead_character_named(step.name):
+                yield step
+                continue
+
+            # Default: show when character is alive
+            if self.has_living_character_named(step.name):
                 yield step
 
     def get_status_effects(self) -> list[StatusEffectOut]:

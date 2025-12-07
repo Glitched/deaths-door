@@ -165,6 +165,7 @@ class TroubleBrewing(Script):
             + "the Ravenkeeper chooses a player. "
             + "Show that player's character token.",
             always_show=False,
+            show_when_dead=True,
         ),
         NightStep(
             name="Undertaker",

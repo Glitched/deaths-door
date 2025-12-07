@@ -19,6 +19,16 @@ class NightStep(BaseModel):
     )
     always_show: bool = Field(
         False,
-        description="If true, show this step even if the character is dead or not in play",
+        description=(
+            "If true, show this step even if the character is dead or not in play"
+        ),
+        examples=[False, True],
+    )
+    show_when_dead: bool = Field(
+        False,
+        description=(
+            "If true, show this step only when the character is dead "
+            "(e.g., Ravenkeeper)"
+        ),
         examples=[False, True],
     )
