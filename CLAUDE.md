@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Version Control
+
+**Use `jj` (Jujutsu) instead of `git` for all version control operations.** This repo is colocated, so both tools see the same commits, but prefer jj commands.
+
+I'm learning jj - when using jj commands, please explain what the equivalent git command would be so I can build mental mappings.
+
 ## Development Commands
 
 ### Backend (Python/FastAPI)
