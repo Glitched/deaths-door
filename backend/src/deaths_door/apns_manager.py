@@ -94,7 +94,13 @@ class APNSManager:
         }
         return jwt.encode(payload, self._key, algorithm="ES256", headers=headers)
 
-    async def send_timer_update(self, seconds: int, is_running: bool) -> None:
+    async def send_timer_update(
+        self,
+        seconds: int,
+        is_running: bool,
+        players_alive: int = 0,
+        total_players: int = 0,
+    ) -> None:
         """Send a Live Activity update to all registered tokens.
 
         Silently no-ops if APNS is not configured or no tokens are registered.
@@ -110,6 +116,8 @@ class APNSManager:
         content_state = {
             "running": is_running,
             "endTime": end_time,
+            "playersAlive": players_alive,
+            "totalPlayers": total_players,
         }
         apns_payload = {
             "aps": {

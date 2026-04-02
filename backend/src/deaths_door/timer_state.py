@@ -5,6 +5,7 @@ import logging
 
 from .apns_manager import APNSManager
 from .config import Config
+from .game_manager import game_manager
 from .obs_manager import ObsManager
 from .sound_fx import SoundFX, SoundName
 
@@ -63,12 +64,23 @@ class TimerState:
         """Access the APNS manager for token registration."""
         return self._apns_manager
 
+    async def _get_player_counts(self) -> tuple[int, int]:
+        """Get (players_alive, total_players) from the game state."""
+        try:
+            game = await game_manager.get_game()
+            total = len(game.players)
+            alive = sum(1 for p in game.players if p.is_alive)
+            return alive, total
+        except Exception:
+            return 0, 0
+
     async def set_is_running(self, new_value: bool):
         """Set whether the timer should be running."""
         self._ensure_tick_task_running()
         async with self._lock:
             self.is_running = new_value
-            await self._apns_manager.send_timer_update(self.seconds, self.is_running)
+            alive, total = await self._get_player_counts()
+            await self._apns_manager.send_timer_update(self.seconds, self.is_running, alive, total)
 
     async def set_seconds(self, new_value: int):
         """Set the number of seconds left."""
@@ -77,7 +89,8 @@ class TimerState:
             self.seconds = new_value
             if self.seconds < 0:
                 self.seconds = 0
-            await self._apns_manager.send_timer_update(self.seconds, self.is_running)
+            alive, total = await self._get_player_counts()
+            await self._apns_manager.send_timer_update(self.seconds, self.is_running, alive, total)
 
     async def add_seconds(self, additional_seconds: int):
         """Add the given number of seconds to the timer."""
