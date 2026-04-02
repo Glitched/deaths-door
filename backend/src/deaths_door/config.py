@@ -1,6 +1,7 @@
 """Configuration management for Deaths Door application."""
 
 import os
+from pathlib import Path
 
 
 class Config:
@@ -20,6 +21,10 @@ class Config:
     # Player Configuration
     MAX_PLAYER_NAME_LENGTH = 50
 
+    # APNS Configuration
+    APNS_KEY_PATH = str(Path(__file__).resolve().parent.parent.parent / "keys" / "AuthKey_*.p8")
+    APNS_HOST = "https://api.sandbox.push.apple.com"  # Use api.push.apple.com for production
+
     @staticmethod
     def get_obs_password() -> str:
         """Get OBS password from environment with validation."""
@@ -33,3 +38,6 @@ class Config:
     def is_obs_required() -> bool:
         """Check if OBS connection is required."""
         return os.getenv("OBS_REQUIRED", "false").lower() == "true"
+
+    APNS_TEAM_ID = "WVCM8HLGRN"
+    APNS_BUNDLE_ID = "dev.bytealigned.DeathsDoor"

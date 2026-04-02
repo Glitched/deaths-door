@@ -11,6 +11,8 @@ dependencies = [
     "pygame-ce>=2.5.2",
     "obs-websocket-py>=1.0",
     "pyserial>=3.5",
+    "email-validator>=2.3.0",
+    "PyJWT[crypto]>=2.9.0",
 ]
 
 [dependency-groups]

@@ -20,6 +20,12 @@ class TimerOperationResponse(BaseModel):
     seconds: int = Field(..., description="Current seconds on the timer", examples=[300])
 
 
+class PushTokenRequest(BaseModel):
+    """Request to register a Live Activity push token."""
+
+    push_token: str = Field(..., description="Hex-encoded APNS push token")
+
+
 def validate_timer_seconds(seconds: int, allow_negative: bool = False) -> None:
     """Validate timer seconds are within acceptable range."""
     min_seconds = -Config.TIMER_MAX_SECONDS if allow_negative else 0
@@ -105,3 +111,15 @@ async def stop_timer() -> TimerOperationResponse:
         is_running=False,
         seconds=await state.get_seconds(),
     )
+
+
+@timer.post("/push_token")
+async def register_push_token(request: PushTokenRequest) -> dict[str, str]:
+    """Register a Live Activity push token for timer updates.
+
+    The iOS app sends its ActivityKit push token here so the server
+    can push timer state changes to the Live Activity when the app
+    is backgrounded.
+    """
+    state.apns_manager.register_token(request.push_token)
+    return {"status": "registered"}

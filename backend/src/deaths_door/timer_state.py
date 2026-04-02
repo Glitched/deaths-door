@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from .apns_manager import APNSManager
 from .config import Config
 from .obs_manager import ObsManager
 from .sound_fx import SoundFX, SoundName
@@ -17,11 +18,13 @@ class TimerState:
     seconds: int = 5 * 60
     _lock: asyncio.Lock
     _obs_manager: ObsManager
+    _apns_manager: APNSManager
 
     def __init__(self):
-        """Initialize the timer and OBS manager."""
+        """Initialize the timer, OBS manager, and APNS manager."""
         self._lock = asyncio.Lock()
         self._obs_manager = ObsManager(host="localhost", port=4455, password=Config.get_obs_password())
+        self._apns_manager = APNSManager()
         self._tick_task = None
 
         try:
@@ -55,11 +58,17 @@ class TimerState:
                         SoundFX().play(SoundName.TIMER)
             await asyncio.sleep(1)
 
+    @property
+    def apns_manager(self) -> APNSManager:
+        """Access the APNS manager for token registration."""
+        return self._apns_manager
+
     async def set_is_running(self, new_value: bool):
         """Set whether the timer should be running."""
         self._ensure_tick_task_running()
         async with self._lock:
             self.is_running = new_value
+            await self._apns_manager.send_timer_update(self.seconds, self.is_running)
 
     async def set_seconds(self, new_value: int):
         """Set the number of seconds left."""
@@ -68,6 +77,7 @@ class TimerState:
             self.seconds = new_value
             if self.seconds < 0:
                 self.seconds = 0
+            await self._apns_manager.send_timer_update(self.seconds, self.is_running)
 
     async def add_seconds(self, additional_seconds: int):
         """Add the given number of seconds to the timer."""
