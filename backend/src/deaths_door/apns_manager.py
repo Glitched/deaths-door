@@ -102,7 +102,8 @@ class APNSManager:
         players_alive: int = 0,
         total_players: int = 0,
     ) -> None:
-        """Send a Live Activity update to all registered tokens.
+        """
+        Send a Live Activity update to all registered tokens.
 
         Silently no-ops if APNS is not configured or no tokens are registered.
         """
