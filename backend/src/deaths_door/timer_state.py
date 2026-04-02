@@ -67,9 +67,9 @@ class TimerState:
     async def _get_player_counts(self) -> tuple[int, int]:
         """Get (players_alive, total_players) from the game state."""
         try:
-            game = await game_manager.get_game()
-            total = len(game.players)
-            alive = sum(1 for p in game.players if p.is_alive)
+            state = await game_manager.get_state()
+            total = len(state.players)
+            alive = sum(1 for p in state.players if p.is_alive)
             return alive, total
         except Exception:
             return 0, 0
