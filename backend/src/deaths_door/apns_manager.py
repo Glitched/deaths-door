@@ -107,8 +107,13 @@ class APNSManager:
 
         Silently no-ops if APNS is not configured or no tokens are registered.
         """
-        if not self._available or not self._push_tokens:
+        if not self._available:
             return
+        if not self._push_tokens:
+            logger.info("APNS: no push tokens registered, skipping")
+            return
+
+        logger.info(f"APNS: pushing update (alive={players_alive}/{total_players}, timer={seconds}s, running={is_running})")
 
         assert self._bundle_id is not None
 
@@ -149,7 +154,7 @@ class APNSManager:
                         },
                     )
                     if response.status_code == 200:
-                        logger.debug(f"APNS push sent to {push_token[:8]}...")
+                        logger.info(f"APNS push sent to {push_token[:8]}...")
                     elif response.status_code == 410:
                         # Token is no longer valid
                         stale_tokens.add(push_token)
