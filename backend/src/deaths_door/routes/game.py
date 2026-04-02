@@ -255,26 +255,37 @@ async def get_night_steps() -> list[NightStep]:
 
 
 class EventOut(BaseModel):
-    """A game event for the history endpoint."""
+    """A single event in the game history."""
 
-    version: int = Field(..., description="Version after this event (1-indexed)")
-    description: str = Field(..., description="Human-readable description of the event")
-    event_type: EventType = Field(..., description="Type of event")
-    timestamp: str = Field(..., description="ISO 8601 timestamp")
-    payload: dict[str, object] = Field(..., description="Event payload data")
+    version: int = Field(..., description="Version after this event (1-indexed)", examples=[1, 5])
+    description: str = Field(
+        ..., description="Human-readable summary", examples=["Ryan joined as Baron", "Yash died"]
+    )
+    event_type: EventType = Field(..., description="Machine-readable event type", examples=["player_added"])
+    timestamp: str = Field(..., description="ISO 8601 timestamp", examples=["2026-04-01T20:30:00+00:00"])
+    payload: dict[str, object] = Field(
+        ...,
+        description="Full event data (varies by event_type)",
+        examples=[{"player_name": "Ryan", "character_name": "Baron", "alignment": "evil"}],
+    )
 
 
 class HistoryResponse(BaseModel):
-    """Response containing the event history for the current game."""
+    """Full event history for the current game. Use version numbers with /game/rewind and /game/fork."""
 
-    game_id: str = Field(..., description="Current game ID")
-    version: int = Field(..., description="Current version (number of events applied)")
+    game_id: str = Field(..., description="UUID of the current game")
+    version: int = Field(..., description="Current version (total events applied)", examples=[18])
     events: list[EventOut] = Field(..., description="All events in chronological order")
 
 
 @router.get("/history")
 async def get_game_history() -> HistoryResponse:
-    """Get the full event history for the current game."""
+    """
+    Get the full event history for the current game.
+
+    Each event includes a human-readable description and the version number it produced.
+    Use these version numbers with POST /game/rewind or POST /game/fork.
+    """
     state = await game_manager.get_state()
     events = await game_manager.get_history()
     return HistoryResponse(
@@ -299,9 +310,14 @@ class RewindRequest(BaseModel):
     to_version: int = Field(..., description="Version to rewind to (1-based, inclusive)", ge=1)
 
 
-@router.post("/rewind", responses={400: {"description": "Invalid version"}})
+@router.post("/rewind", responses={400: {"description": "Invalid version (must be 1 to current version)"}})
 async def rewind_game(req: RewindRequest) -> GameStateResponse:
-    """Rewind the current game to a previous version, deleting subsequent events."""
+    """
+    Rewind the current game to a previous version, deleting subsequent events.
+
+    This is destructive — events after to_version are permanently deleted.
+    Use POST /game/fork first if you want to preserve the original timeline.
+    """
     try:
         await game_manager.rewind(req.to_version)
     except ValueError as e:
@@ -323,9 +339,14 @@ class ForkResponse(BaseModel):
     version: int = Field(..., description="Version of the forked game")
 
 
-@router.post("/fork", responses={400: {"description": "Invalid version"}})
+@router.post("/fork", responses={400: {"description": "Invalid version (must be 1 to current version)"}})
 async def fork_game(req: ForkRequest) -> ForkResponse:
-    """Fork the current game from a specific version, creating a new game branch."""
+    """
+    Fork the current game from a specific version into a new independent game.
+
+    Copies all events up to from_version into a new game. The original game is unchanged.
+    The forked game becomes the active game. Use POST /game/load to switch back.
+    """
     try:
         new_state = await game_manager.fork(req.from_version)
     except ValueError as e:
@@ -340,9 +361,13 @@ class LoadGameRequest(BaseModel):
     game_id: str = Field(..., description="UUID of the game to load")
 
 
-@router.post("/load", responses={400: {"description": "Game not found"}})
+@router.post("/load", responses={400: {"description": "Invalid or unknown game ID"}})
 async def load_game(req: LoadGameRequest) -> GameStateResponse:
-    """Load a previously saved game by its ID."""
+    """
+    Load a previously saved game by its ID.
+
+    Get available game IDs from GET /game/list. The loaded game becomes the active game.
+    """
     try:
         game_id = UUID(req.game_id)
     except ValueError as e:
@@ -364,6 +389,6 @@ class GameListResponse(BaseModel):
 
 @router.get("/list")
 async def list_games() -> GameListResponse:
-    """List all saved game IDs."""
+    """List all saved game IDs. Use with POST /game/load to switch between games."""
     ids = await game_manager.list_games()
     return GameListResponse(game_ids=[str(gid) for gid in ids])
