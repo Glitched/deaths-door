@@ -11,8 +11,7 @@ class Imp(Character):
         """Initialize the Imp character."""
         self.name = "Imp"
         self.description = (
-            "Each night*, choose a player: they die. "
-            "If you chose yourself, you die & a Minion becomes the Imp."
+            "Each night*, choose a player: they die. If you chose yourself, you die & a Minion becomes the Imp."
         )
         self.category = CharacterType.DEMON
         self.alignment = Alignment.EVIL

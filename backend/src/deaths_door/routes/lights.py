@@ -15,7 +15,7 @@ router = APIRouter(prefix="/lights", tags=["Lighting"])
 async def get_status() -> dict[str, Any]:
     """Get DMX connection status and detected devices."""
     manager = LightingManager()
-    
+
     # Get serial port info if connected
     port_info = None
     if manager.controller and manager.controller.serial_port:
@@ -23,7 +23,7 @@ async def get_status() -> dict[str, Any]:
             "port": manager.controller.serial_port.port,
             "is_open": manager.controller.serial_port.is_open,
         }
-    
+
     return {
         "connected": manager.connected,
         "serial_port": port_info,
@@ -41,9 +41,7 @@ class OperationResponse(BaseModel):
     """Response for successful operations."""
 
     status: str = Field(..., description="Operation status", examples=["success"])
-    message: str = Field(
-        ..., description="Operation message", examples=["Lights updated"]
-    )
+    message: str = Field(..., description="Operation message", examples=["Lights updated"])
 
 
 class SceneListResponse(BaseModel):
@@ -63,9 +61,7 @@ class PositionResponse(BaseModel):
 class PositionsListResponse(BaseModel):
     """Response with all saved positions."""
 
-    positions: dict[int, dict[str, int]] = Field(
-        ..., description="Dictionary of player positions"
-    )
+    positions: dict[int, dict[str, int]] = Field(..., description="Dictionary of player positions")
 
 
 # Request Models
@@ -93,9 +89,7 @@ class CalibrationSaveRequest(BaseModel):
 class SpotlightRequest(BaseModel):
     """Request to spotlight a player."""
 
-    brightness: int = Field(
-        255, description="Brightness level (0-255)", ge=0, le=255
-    )
+    brightness: int = Field(255, description="Brightness level (0-255)", ge=0, le=255)
     fixture_id: int = Field(1, description="Fixture ID to use (1 or 2)", ge=1, le=2)
 
 
@@ -115,7 +109,7 @@ async def list_scenes() -> SceneListResponse:
     },
 )
 async def trigger_scene(
-    name: str = Path(..., description="Name of the scene to trigger", examples=["death"])
+    name: str = Path(..., description="Name of the scene to trigger", examples=["death"]),
 ) -> OperationResponse:
     """
     Trigger a lighting scene.
@@ -130,13 +124,9 @@ async def trigger_scene(
     try:
         manager = LightingManager()
         manager.trigger_scene(name)
-        return OperationResponse(
-            status="success", message=f"Scene '{name}' triggered successfully"
-        )
+        return OperationResponse(status="success", message=f"Scene '{name}' triggered successfully")
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to trigger scene: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to trigger scene: {str(e)}") from e
 
 
 @router.post(
@@ -151,7 +141,7 @@ async def trigger_integrated_scene(
         ...,
         description="Name of the integrated scene to trigger",
         examples=["death"],
-    )
+    ),
 ) -> OperationResponse:
     """
     Trigger an integrated light+sound scene.
@@ -182,9 +172,7 @@ async def trigger_integrated_scene(
             message=f"Integrated scene '{name}' triggered successfully",
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to trigger scene: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to trigger scene: {str(e)}") from e
 
 
 # Granular Control Endpoints
@@ -220,9 +208,7 @@ async def set_channel(
             message=f"Fixture {fixture_id} channel {channel} set to {request.value}",
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to set channel: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to set channel: {str(e)}") from e
 
 
 @router.post("/fixture/{fixture_id}/position")
@@ -244,9 +230,7 @@ async def set_position(
             message=f"Fixture {fixture_id} positioned to pan={request.pan}, tilt={request.tilt}",
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to set position: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to set position: {str(e)}") from e
 
 
 @router.post("/blackout")
@@ -261,9 +245,7 @@ async def blackout() -> OperationResponse:
         manager.blackout()
         return OperationResponse(status="success", message="All lights blacked out")
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to blackout: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to blackout: {str(e)}") from e
 
 
 # Calibration Endpoints
@@ -291,9 +273,7 @@ async def save_player_position(
             message=f"Position saved for player {player_num}",
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to save position: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to save position: {str(e)}") from e
 
 
 @router.get("/calibrate/positions")
@@ -308,15 +288,13 @@ async def get_all_positions() -> PositionsListResponse:
         positions = manager.get_all_positions()
         return PositionsListResponse(positions=positions)
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get positions: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to get positions: {str(e)}") from e
 
 
 @router.post("/spotlight/player/{player_num}")
 async def spotlight_player(
     player_num: int = Path(..., description="Player number to spotlight", ge=1),
-    request: SpotlightRequest = SpotlightRequest(),
+    request: SpotlightRequest = SpotlightRequest(),  # noqa: B008
 ) -> OperationResponse:
     """
     Spotlight a specific player using their saved calibrated position.
@@ -333,13 +311,10 @@ async def spotlight_player(
         if player_num not in manager.positions:
             raise HTTPException(
                 status_code=404,
-                detail=f"No calibrated position found for player {player_num}. "
-                "Please calibrate the position first.",
+                detail=f"No calibrated position found for player {player_num}. Please calibrate the position first.",
             )
 
-        manager.spotlight_player(
-            player_num, request.brightness, request.fixture_id
-        )
+        manager.spotlight_player(player_num, request.brightness, request.fixture_id)
         return OperationResponse(
             status="success",
             message=f"Spotlighting player {player_num} with fixture {request.fixture_id}",
@@ -347,7 +322,4 @@ async def spotlight_player(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to spotlight player: {str(e)}"
-        ) from e
-
+        raise HTTPException(status_code=500, detail=f"Failed to spotlight player: {str(e)}") from e

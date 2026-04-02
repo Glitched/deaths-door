@@ -22,6 +22,7 @@ class ScriptListResponse(BaseModel):
         ],
     )
 
+
 router = APIRouter(prefix="/scripts", tags=["Scripts"])
 
 
@@ -37,7 +38,7 @@ async def read_roles(
         ...,
         description="Name of the script/edition",
         examples=["trouble_brewing"],
-    )
+    ),
 ) -> list[CharacterOut]:
     """List all character roles available in the given script."""
     script = get_script_by_name(script_name)
@@ -53,7 +54,7 @@ async def read_travelers(
         ...,
         description="Name of the script/edition",
         examples=["trouble_brewing"],
-    )
+    ),
 ) -> list[CharacterOut]:
     """List all traveler characters available in the given script."""
     script = get_script_by_name(script_name)

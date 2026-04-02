@@ -9,10 +9,7 @@ class Bureaucrat(Character):
     def __init__(self):
         """Initialize the Bureaucrat character."""
         self.name = "Bureaucrat"
-        self.description = (
-            "Each night, choose a player (not yourself);"
-            + " their vote counts as 3 votes tomorrow."
-        )
+        self.description = "Each night, choose a player (not yourself);" + " their vote counts as 3 votes tomorrow."
         self.category = CharacterType.TRAVELER
         self.alignment = Alignment.UNKNOWN
         self.status_effects = []

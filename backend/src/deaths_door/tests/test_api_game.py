@@ -28,9 +28,7 @@ async def test_set_night_step():
         await setup_game_with_roles(client)
 
         # Set to Poisoner
-        response = await client.post(
-            "/game/night/phase/step", json={"step": "Poisoner"}
-        )
+        response = await client.post("/game/night/phase/step", json={"step": "Poisoner"})
         assert response.status_code == 200
 
         data = response.json()
@@ -51,9 +49,7 @@ async def test_set_first_night():
         await setup_game_with_roles(client)
 
         # Set to False (subsequent night)
-        response = await client.post(
-            "/game/night/phase/first_night", json={"is_first_night": False}
-        )
+        response = await client.post("/game/night/phase/first_night", json={"is_first_night": False})
         assert response.status_code == 200
 
         data = response.json()
@@ -67,9 +63,7 @@ async def test_set_first_night():
         assert get_data["is_first_night"] is False
 
         # Set back to True (should also reset to Dusk)
-        response2 = await client.post(
-            "/game/night/phase/first_night", json={"is_first_night": True}
-        )
+        response2 = await client.post("/game/night/phase/first_night", json={"is_first_night": True})
         assert response2.status_code == 200
         assert response2.json()["is_first_night"] is True
         assert response2.json()["current_night_step"] == "Dusk"
@@ -92,9 +86,7 @@ async def test_set_first_night_resets_to_dusk():
         assert phase.json()["current_night_step"] == "Poisoner"
 
         # Change to subsequent night - should reset to Dusk
-        response = await client.post(
-            "/game/night/phase/first_night", json={"is_first_night": False}
-        )
+        response = await client.post("/game/night/phase/first_night", json={"is_first_night": False})
         assert response.json()["current_night_step"] == "Dusk"
         assert response.json()["is_first_night"] is False
 
@@ -104,9 +96,7 @@ async def test_set_first_night_resets_to_dusk():
         assert phase.json()["current_night_step"] == "Imp"
 
         # Change back to first night - should reset to Dusk again
-        response = await client.post(
-            "/game/night/phase/first_night", json={"is_first_night": True}
-        )
+        response = await client.post("/game/night/phase/first_night", json={"is_first_night": True})
         assert response.json()["current_night_step"] == "Dusk"
         assert response.json()["is_first_night"] is True
 
@@ -129,9 +119,7 @@ async def test_get_night_steps_consolidated():
 
         # Should be the same
         assert len(first_night_steps) == len(dedicated_first)
-        assert [s["name"] for s in first_night_steps] == [
-            s["name"] for s in dedicated_first
-        ]
+        assert [s["name"] for s in first_night_steps] == [s["name"] for s in dedicated_first]
 
         # Switch to subsequent night
         await client.post("/game/night/phase/first_night", json={"is_first_night": False})
@@ -148,9 +136,7 @@ async def test_get_night_steps_consolidated():
 
         # Should be the same
         assert len(other_night_steps) == len(dedicated_other)
-        assert [s["name"] for s in other_night_steps] == [
-            s["name"] for s in dedicated_other
-        ]
+        assert [s["name"] for s in other_night_steps] == [s["name"] for s in dedicated_other]
 
         # First and other night steps should be different
         first_names = [s["name"] for s in first_night_steps]

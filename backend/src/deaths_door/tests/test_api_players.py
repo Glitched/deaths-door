@@ -27,9 +27,7 @@ async def test_create_new_game_and_add_players():
         assert alice_data.is_alive is True
         assert alice_data.character.name is not None
         assert bob_data.name == "Bob"
-        assert (
-            bob_data.character.name != alice_data.character.name
-        )  # Different roles
+        assert bob_data.character.name != alice_data.character.name  # Different roles
 
         # Check player list
         response = await client.get("/players/list")
@@ -75,9 +73,7 @@ async def test_add_invalid_traveler():
     async with get_test_client() as client:
         await setup_game_with_roles(client)
 
-        response = await client.post(
-            "/players/add_traveler", json={"name": "Alice", "traveler": "FakeTraveler"}
-        )
+        response = await client.post("/players/add_traveler", json={"name": "Alice", "traveler": "FakeTraveler"})
         assert response.status_code == 404  # Not found should be 404
         assert "not found" in response.json()["detail"]
 
@@ -90,9 +86,7 @@ async def test_player_death_and_resurrection():
         await add_test_players(client, ["Alice"])
 
         # Kill player
-        response = await client.post(
-            "/players/set_alive", json={"name": "Alice", "is_alive": False}
-        )
+        response = await client.post("/players/set_alive", json={"name": "Alice", "is_alive": False})
         assert response.status_code == 200
 
         # Check player is dead
@@ -101,9 +95,7 @@ async def test_player_death_and_resurrection():
         assert alice["is_alive"] is False
 
         # Revive player
-        response = await client.post(
-            "/players/set_alive", json={"name": "Alice", "is_alive": True}
-        )
+        response = await client.post("/players/set_alive", json={"name": "Alice", "is_alive": True})
         assert response.status_code == 200
 
         # Check player is alive
@@ -147,14 +139,10 @@ async def test_player_status_effects():
 @pytest.mark.anyio
 async def test_swap_player_characters():
     """Test swapping characters between two players."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/game/new", json={"script_name": "trouble_brewing"})
         # Add some roles so players can be assigned
-        await client.post(
-            "/characters/add/multi", json={"names": ["Imp", "Chef", "Butler"]}
-        )
+        await client.post("/characters/add/multi", json={"names": ["Imp", "Chef", "Butler"]})
 
         # Add two players
         await client.post("/players/add", json={"name": "Alice"})
@@ -163,25 +151,17 @@ async def test_swap_player_characters():
         # Get their original characters
         response = await client.get("/players/list")
         players = response.json()
-        alice_original = next(p for p in players if p["name"] == "Alice")["character"][
-            "name"
-        ]
-        bob_original = next(p for p in players if p["name"] == "Bob")["character"][
-            "name"
-        ]
+        alice_original = next(p for p in players if p["name"] == "Alice")["character"]["name"]
+        bob_original = next(p for p in players if p["name"] == "Bob")["character"]["name"]
 
         # Swap characters
-        response = await client.post(
-            "/players/swap_character", json={"name1": "Alice", "name2": "Bob"}
-        )
+        response = await client.post("/players/swap_character", json={"name1": "Alice", "name2": "Bob"})
         assert response.status_code == 200
 
         # Check characters were swapped
         response = await client.get("/players/list")
         players = response.json()
-        alice_new = next(p for p in players if p["name"] == "Alice")["character"][
-            "name"
-        ]
+        alice_new = next(p for p in players if p["name"] == "Alice")["character"]["name"]
         bob_new = next(p for p in players if p["name"] == "Bob")["character"]["name"]
 
         assert alice_new == bob_original
@@ -191,14 +171,10 @@ async def test_swap_player_characters():
 @pytest.mark.anyio
 async def test_remove_player():
     """Test removing a player from the game."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/game/new", json={"script_name": "trouble_brewing"})
         # Add some roles so players can be assigned
-        await client.post(
-            "/characters/add/multi", json={"names": ["Imp", "Chef", "Butler"]}
-        )
+        await client.post("/characters/add/multi", json={"names": ["Imp", "Chef", "Butler"]})
         await client.post("/players/add", json={"name": "Alice"})
         await client.post("/players/add", json={"name": "Bob"})
 
@@ -216,14 +192,10 @@ async def test_remove_player():
 @pytest.mark.anyio
 async def test_role_visibility_toggle():
     """Test toggling role visibility for storyteller."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/game/new", json={"script_name": "trouble_brewing"})
         # Add some roles so players can be assigned
-        await client.post(
-            "/characters/add/multi", json={"names": ["Imp", "Chef", "Butler"]}
-        )
+        await client.post("/characters/add/multi", json={"names": ["Imp", "Chef", "Butler"]})
 
         # Initially roles should not be visible
         response = await client.get("/players/visibility")
@@ -231,9 +203,7 @@ async def test_role_visibility_toggle():
         assert response.json() is False
 
         # Enable role visibility
-        response = await client.post(
-            "/players/set_visibility", json={"should_reveal_roles": True}
-        )
+        response = await client.post("/players/set_visibility", json={"should_reveal_roles": True})
         assert response.status_code == 200
         assert response.json() is True
 
@@ -245,14 +215,10 @@ async def test_role_visibility_toggle():
 @pytest.mark.anyio
 async def test_get_player_role_with_reveal():
     """Test getting player role when reveal is enabled."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/game/new", json={"script_name": "trouble_brewing"})
         # Add some roles so players can be assigned
-        await client.post(
-            "/characters/add/multi", json={"names": ["Imp", "Chef", "Butler"]}
-        )
+        await client.post("/characters/add/multi", json={"names": ["Imp", "Chef", "Butler"]})
         await client.post("/players/add", json={"name": "Alice"})
 
         # Enable role reveal
@@ -270,24 +236,16 @@ async def test_get_player_role_with_reveal():
 @pytest.mark.anyio
 async def test_nonexistent_player_operations():
     """Test operations on non-existent players return 404."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/game/new", json={"script_name": "trouble_brewing"})
         # Add some roles so players can be assigned
-        await client.post(
-            "/characters/add/multi", json={"names": ["Imp", "Chef", "Butler"]}
-        )
+        await client.post("/characters/add/multi", json={"names": ["Imp", "Chef", "Butler"]})
 
         # Try to operate on non-existent player
-        response = await client.post(
-            "/players/set_alive", json={"name": "NonExistentPlayer", "is_alive": False}
-        )
+        response = await client.post("/players/set_alive", json={"name": "NonExistentPlayer", "is_alive": False})
         assert response.status_code == 404
 
-        response = await client.post(
-            "/players/remove", json={"name": "NonExistentPlayer"}
-        )
+        response = await client.post("/players/remove", json={"name": "NonExistentPlayer"})
         assert response.status_code == 404
 
         response = await client.get("/players/name/NonExistentPlayer")
@@ -314,9 +272,7 @@ async def test_game_workflow_integration():
         assert len(response.json()) == 8
 
         # 5. Some players die during the night
-        await client.post(
-            "/players/set_alive", json={"name": "Alice", "is_alive": False}
-        )
+        await client.post("/players/set_alive", json={"name": "Alice", "is_alive": False})
         await client.post("/players/set_alive", json={"name": "Bob", "is_alive": False})
 
         # 6. Add status effects
@@ -351,10 +307,9 @@ async def test_game_workflow_integration():
 @pytest.mark.anyio
 async def test_concurrent_role_reveal_no_deadlock():
     """
-    Test that multiple concurrent requests for player roles don't deadlock
-    while waiting for role reveal to be enabled.
+    Test that multiple concurrent requests for player roles don't deadlock.
 
-    This simulates the scenario where 10 players are waiting on the character
+    Simulates the scenario where 10 players are waiting on the character
     reveal page while the storyteller enables role visibility.
     """
     import anyio
@@ -383,12 +338,12 @@ async def test_concurrent_role_reveal_no_deadlock():
         results = []
 
         async def get_player_role_after_delay(player_name: str):
-            """Request player role - will wait for reveal flag"""
+            """Request player role. Will wait for reveal flag."""
             response = await client.get(f"/players/name/{player_name}")
             results.append((player_name, response.status_code))
 
         async def enable_reveal_after_delay():
-            """Enable role reveal after a short delay"""
+            """Enable role reveal after a short delay."""
             await anyio.sleep(0.2)  # Let requests start waiting first
             await enable_role_reveal(client)
 

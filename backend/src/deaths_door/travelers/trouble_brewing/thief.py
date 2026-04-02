@@ -9,10 +9,7 @@ class Thief(Character):
     def __init__(self):
         """Initialize the Thief character."""
         self.name = "Thief"
-        self.description = (
-            "Each night, choose a player (not yourself);"
-            " their vote counts negatively tomorrow."
-        )
+        self.description = "Each night, choose a player (not yourself); their vote counts negatively tomorrow."
         self.category = CharacterType.TRAVELER
         self.alignment = Alignment.UNKNOWN
         self.status_effects = []

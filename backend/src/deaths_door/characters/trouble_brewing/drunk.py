@@ -10,8 +10,7 @@ class Drunk(Character):
         """Initialize the Drunk character."""
         self.name = "Drunk"
         self.description = (
-            "You do not know you are the Drunk. You think you are a Townsfolk, "
-            + "but your ability malfunctions."
+            "You do not know you are the Drunk. You think you are a Townsfolk, " + "but your ability malfunctions."
         )
         self.category = CharacterType.OUTSIDER
         self.alignment = Alignment.GOOD

@@ -40,9 +40,7 @@ def get_font_settings(face: str, size: int) -> dict[str, Any]:
     }
 
 
-def get_text_input_settings(
-    text: str, font_face: str, font_size: int
-) -> dict[str, Any]:
+def get_text_input_settings(text: str, font_face: str, font_size: int) -> dict[str, Any]:
     """Get text input settings appropriate for the current platform."""
     font = get_font_settings(font_face, font_size)
 
@@ -175,9 +173,7 @@ class ObsManager:
                     # Continue trying to reconnect
             else:
                 # Exponential backoff, capped at max
-                self._reconnect_delay = min(
-                    self._reconnect_delay * 2, self._max_reconnect_delay
-                )
+                self._reconnect_delay = min(self._reconnect_delay * 2, self._max_reconnect_delay)
 
     def _mark_disconnected(self) -> None:
         """Mark as disconnected and trigger reconnection."""
@@ -237,13 +233,9 @@ class ObsManager:
 
     def set_current_scene(self) -> None:
         """Set the current scene."""
-        self.call(
-            requests.SetCurrentProgramScene(sceneName=self.get_object_name(SCENE_NAME))
-        )
+        self.call(requests.SetCurrentProgramScene(sceneName=self.get_object_name(SCENE_NAME)))
 
-    def create_input(
-        self, input_name: str, input_kind: str, input_settings: dict[str, Any]
-    ) -> Input:
+    def create_input(self, input_name: str, input_kind: str, input_settings: dict[str, Any]) -> Input:
         """Create an input for the countdown."""
         req = self.call(
             requests.CreateInput(
@@ -255,9 +247,7 @@ class ObsManager:
         )
         return Input(**req.datain)
 
-    def set_input_settings(
-        self, input_name: str, input_settings: dict[str, Any]
-    ) -> None:
+    def set_input_settings(self, input_name: str, input_settings: dict[str, Any]) -> None:
         """Set the settings of an input."""
         self.call(
             requests.SetInputSettings(
@@ -354,8 +344,6 @@ class ObsManager:
         """Context manager entry."""
         return self
 
-    def __exit__(
-        self, exc_type: type | None, exc_val: Exception | None, exc_tb: object
-    ) -> None:
+    def __exit__(self, exc_type: type | None, exc_val: Exception | None, exc_tb: object) -> None:
         """Context manager exit with cleanup."""
         self.close()

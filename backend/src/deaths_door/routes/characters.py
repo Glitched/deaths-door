@@ -23,9 +23,8 @@ class AddRoleMultiResponse(BaseModel):
     """Response after adding multiple roles to the game."""
 
     status: str = Field(..., description="Operation status", examples=["success"])
-    added_count: int = Field(
-        ..., description="Number of roles successfully added", examples=[7]
-    )
+    added_count: int = Field(..., description="Number of roles successfully added", examples=[7])
+
 
 router = APIRouter(prefix="/characters", tags=["Characters"])
 
@@ -34,7 +33,8 @@ router = APIRouter(prefix="/characters", tags=["Characters"])
 async def get_game_roles(
     game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
 ) -> list[CharacterOut]:
-    """List roles that have been added to the current game via /characters/add/multi.
+    """
+    List roles that have been added to the current game via /characters/add/multi.
 
     This returns the active role pool that players will be randomly assigned from.
     To see ALL possible roles in the script, use GET /game/script/roles instead.

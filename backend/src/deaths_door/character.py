@@ -17,9 +17,7 @@ class CharacterOut(BaseModel):
     description: str = Field(
         ...,
         description="Character's ability description",
-        examples=[
-            "Each night*, choose a player: they die. If you kill yourself this way, a Minion becomes the Imp."
-        ],
+        examples=["Each night*, choose a player: they die. If you kill yourself this way, a Minion becomes the Imp."],
     )
     icon_path: str = Field(
         ...,
@@ -54,11 +52,7 @@ class Character:
 
     def __repr__(self) -> str:
         """Return a detailed string representation."""
-        return (
-            f"Character(name={self.name!r}, "
-            f"category={self.category!r}, "
-            f"alignment={self.alignment!r})"
-        )
+        return f"Character(name={self.name!r}, category={self.category!r}, alignment={self.alignment!r})"
 
     def normalize_name_for_comparison(self, name: str) -> str:
         """Convert name to lowercase and remove whitespace for comparison."""
@@ -66,9 +60,7 @@ class Character:
 
     def is_named(self, name: str) -> bool:
         """Check if the character matches the given name."""
-        return self.normalize_name_for_comparison(
-            self.name
-        ) == self.normalize_name_for_comparison(name)
+        return self.normalize_name_for_comparison(self.name) == self.normalize_name_for_comparison(name)
 
     def get_icon_path(self) -> str:
         """Return the character's icon."""
@@ -76,9 +68,7 @@ class Character:
 
     def get_status_effects_out(self) -> list[StatusEffectOut]:
         """Return the character's status effects."""
-        return [
-            status_effect.to_out(self.name) for status_effect in self.status_effects
-        ]
+        return [status_effect.to_out(self.name) for status_effect in self.status_effects]
 
     def to_out(self) -> CharacterOut:
         """Convert the character to a character out."""

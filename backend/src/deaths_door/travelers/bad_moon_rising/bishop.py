@@ -10,8 +10,7 @@ class Bishop(Character):
         """Initialize the Bishop character."""
         self.name = "Bishop"
         self.description = (
-            "Only the Storyteller can nominate."
-            + " At least 1 opposing player must be nominated each day."
+            "Only the Storyteller can nominate." + " At least 1 opposing player must be nominated each day."
         )
         self.category = CharacterType.TRAVELER
         self.alignment = Alignment.UNKNOWN

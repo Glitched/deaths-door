@@ -28,11 +28,7 @@ class Game:
 
     def __repr__(self) -> str:
         """Return a detailed string representation."""
-        return (
-            f"Game(script={self.script.name!r}, "
-            f"players={len(self.players)}, "
-            f"roles={len(self.included_roles)})"
-        )
+        return f"Game(script={self.script.name!r}, players={len(self.players)}, roles={len(self.included_roles)})"
 
     def __init__(self, script_name: ScriptName) -> None:
         """Create a new game."""
@@ -55,9 +51,7 @@ class Game:
     def remove_role(self, role_name: str) -> None:
         """Remove a role from the game."""
         try:
-            self.included_roles.remove(
-                next(role for role in self.included_roles if role.is_named(role_name))
-            )
+            self.included_roles.remove(next(role for role in self.included_roles if role.is_named(role_name)))
         except StopIteration as err:
             raise ValueError(f"Role not in game: {role_name}") from err
 
@@ -67,13 +61,9 @@ class Game:
             raise ValueError("No roles to assign")
 
         try:
-            character = next(
-                char for char in self.included_roles if char.is_named(role_name)
-            )
+            character = next(char for char in self.included_roles if char.is_named(role_name))
         except StopIteration:
-            raise ValueError(
-                f"Role '{role_name}' not found in included roles"
-            ) from None
+            raise ValueError(f"Role '{role_name}' not found in included roles") from None
 
         return self.add_player_with_character(name, character)
 
@@ -98,9 +88,7 @@ class Game:
         # Check if traveler is valid and unassigned
         travelers = self.get_unclaimed_travelers()
         try:
-            traveler = next(
-                traveler for traveler in travelers if traveler.name == traveler_name
-            )
+            traveler = next(traveler for traveler in travelers if traveler.name == traveler_name)
         except StopIteration:
             traveler = None
 
@@ -166,17 +154,11 @@ class Game:
 
     def has_living_character_named(self, character_name: str) -> bool:
         """Check if any living player has the specified character."""
-        return any(
-            player.character.is_named(character_name) and player.is_alive
-            for player in self.players
-        )
+        return any(player.character.is_named(character_name) and player.is_alive for player in self.players)
 
     def has_dead_character_named(self, character_name: str) -> bool:
         """Check if any dead player has the specified character."""
-        return any(
-            player.character.is_named(character_name) and not player.is_alive
-            for player in self.players
-        )
+        return any(player.character.is_named(character_name) and not player.is_alive for player in self.players)
 
     def get_first_night_steps(self) -> Generator[NightStep, None, None]:
         """Get the first night steps."""
@@ -186,9 +168,7 @@ class Game:
         """Get the other night steps."""
         return self.filter_active_night_steps(self.script.get_other_night_steps())
 
-    def filter_active_night_steps(
-        self, steps: list[NightStep]
-    ) -> Generator[NightStep, None, None]:
+    def filter_active_night_steps(self, steps: list[NightStep]) -> Generator[NightStep, None, None]:
         """Yield night steps that should be shown based on current game state."""
         for step in steps:
             # Always show structural steps (Dusk, Dawn, etc.)
@@ -207,11 +187,7 @@ class Game:
 
     def get_status_effects(self) -> list[StatusEffectOut]:
         """Get the status effects in the game."""
-        all_status_effects = [
-            effect
-            for player in self.players
-            for effect in player.character.get_status_effects_out()
-        ]
+        all_status_effects = [effect for player in self.players for effect in player.character.get_status_effects_out()]
         # Sort by character name so list order is consistent
         all_status_effects.sort(key=lambda effect: effect.character_name)
         return all_status_effects
@@ -228,20 +204,12 @@ class Game:
 
     def get_dead_players_with_vote(self) -> list[str]:
         """Get names of dead players who haven't used their dead vote."""
-        return [
-            player.name
-            for player in self.players
-            if not player.is_alive and not player.has_used_dead_vote
-        ]
+        return [player.name for player in self.players if not player.is_alive and not player.has_used_dead_vote]
 
     def get_unclaimed_travelers(self) -> list[Character]:
         """Get the unclaimed travelers."""
         claimed_characters = [player.character for player in self.players]
-        return [
-            traveler
-            for traveler in self.script.travelers
-            if traveler not in claimed_characters
-        ]
+        return [traveler for traveler in self.script.travelers if traveler not in claimed_characters]
 
     @classmethod
     def get_sample_game(cls) -> Game:

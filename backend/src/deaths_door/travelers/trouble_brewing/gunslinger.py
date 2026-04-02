@@ -10,8 +10,7 @@ class Gunslinger(Character):
         """Initialize the Gunslinger character."""
         self.name = "Gunslinger"
         self.description = (
-            "Each day, after the 1st vote has been tallied,"
-            + " you may choose a player that voted: they die."
+            "Each day, after the 1st vote has been tallied," + " you may choose a player that voted: they die."
         )
         self.category = CharacterType.TRAVELER
         self.alignment = Alignment.UNKNOWN

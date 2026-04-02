@@ -19,9 +19,7 @@ async def test_add_player_with_specific_role():
     assert player.alignment == Alignment.EVIL
     assert player.is_alive is True
     assert len(test_case.game.players) == 1
-    assert len(test_case.game.included_roles) < len(
-        test_case.game.script.characters
-    )  # Role was removed
+    assert len(test_case.game.included_roles) < len(test_case.game.script.characters)  # Role was removed
 
 
 @pytest.mark.anyio
@@ -29,9 +27,7 @@ async def test_add_player_with_nonexistent_role():
     """Test that adding a player with non-existent role raises error."""
     test_case = GameTestCase()
 
-    with pytest.raises(
-        ValueError, match="Role 'NonExistentRole' not found in included roles"
-    ):
+    with pytest.raises(ValueError, match="Role 'NonExistentRole' not found in included roles"):
         test_case.game.add_player_with_role("Alice", "NonExistentRole")
 
 
@@ -219,9 +215,7 @@ async def test_remove_nonexistent_player():
 async def test_living_player_count():
     """Test living player count updates as players die."""
     test_case = GameTestCase(roles=["Imp", "Chef", "Monk"])
-    test_case.add_players_with_roles(
-        [("Alice", "Imp"), ("Bob", "Chef"), ("Charlie", "Monk")]
-    )
+    test_case.add_players_with_roles([("Alice", "Imp"), ("Bob", "Chef"), ("Charlie", "Monk")])
 
     assert test_case.game.living_player_count == 3
 
@@ -266,9 +260,7 @@ async def test_execution_threshold():
 async def test_dead_players_with_vote():
     """Test tracking dead players who still have their vote."""
     test_case = GameTestCase(roles=["Imp", "Chef", "Monk"])
-    test_case.add_players_with_roles(
-        [("Alice", "Imp"), ("Bob", "Chef"), ("Charlie", "Monk")]
-    )
+    test_case.add_players_with_roles([("Alice", "Imp"), ("Bob", "Chef"), ("Charlie", "Monk")])
 
     # No dead players
     assert test_case.game.get_dead_players_with_vote() == []

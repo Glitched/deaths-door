@@ -11,8 +11,7 @@ class Librarian(Character):
         """Initialize the Librarian character."""
         self.name = "Librarian"
         self.description = (
-            "You start knowing that 1 of 2 players is a particular Outsider."
-            + " (Or that zero are in play)"
+            "You start knowing that 1 of 2 players is a particular Outsider." + " (Or that zero are in play)"
         )
         self.category = CharacterType.TOWNSFOLK
         self.alignment = Alignment.GOOD

@@ -10,8 +10,7 @@ class Harlot(Character):
         """Initialize the Harlot character."""
         self.name = "Harlot"
         self.description = (
-            "Each night, choose a living player. If they agree, "
-            + "you learn their character, but you both might die."
+            "Each night, choose a living player. If they agree, " + "you learn their character, but you both might die."
         )
         self.category = CharacterType.TRAVELER
         self.alignment = Alignment.UNKNOWN

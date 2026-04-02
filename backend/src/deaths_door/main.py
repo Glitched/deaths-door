@@ -53,11 +53,11 @@ to enable/disable. When disabled, `GET /players/name/{name}` will wait up to 10 
         },
         {
             "name": "Players",
-            "description": "Manage players in the game: add, remove, modify status, swap characters, and control role visibility.",
+            "description": "Manage players: add, remove, modify status, swap characters, and control role visibility.",
         },
         {
             "name": "Characters",
-            "description": "Add or remove character roles from the current game. Roles must be added before players can be assigned.",
+            "description": "Add or remove character roles from the game. Roles must be added before players join.",
         },
         {
             "name": "Scripts",
@@ -73,7 +73,7 @@ to enable/disable. When disabled, `GET /players/name/{name}` will wait up to 10 
         },
         {
             "name": "Lighting",
-            "description": "Control DMX lighting effects, moving head lights, and fog machine. Supports scenes, calibration, and granular control.",
+            "description": "Control DMX lighting effects, moving head lights, and fog machine.",
         },
         {
             "name": "System",

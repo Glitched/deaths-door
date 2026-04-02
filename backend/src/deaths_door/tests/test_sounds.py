@@ -21,8 +21,9 @@ async def test_list_sounds_returns_dict_of_categories():
             assert isinstance(category, str), f"Category '{category}' should be a string"
             assert isinstance(sound_list, list), f"Category '{category}' should contain a list"
             assert len(sound_list) > 0, f"Category '{category}' should not be empty"
-            assert all(isinstance(sound, str) for sound in sound_list), \
+            assert all(isinstance(sound, str) for sound in sound_list), (
                 f"All sounds in category '{category}' should be strings"
+            )
 
 
 @pytest.mark.anyio

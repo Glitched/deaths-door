@@ -11,8 +11,7 @@ class Slayer(Character):
         """Initialize the Slayer character."""
         self.name = "Slayer"
         self.description = (
-            "Once per game, during the day, publicly choose a player: "
-            + "if they are the Demon, they die."
+            "Once per game, during the day, publicly choose a player: " + "if they are the Demon, they die."
         )
         self.category = CharacterType.TOWNSFOLK
         self.alignment = Alignment.GOOD

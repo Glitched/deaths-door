@@ -1,4 +1,3 @@
-import asyncio
 from contextlib import AbstractAsyncContextManager
 
 import anyio
@@ -10,6 +9,9 @@ from ..alignment import Alignment
 from ..game import Game
 from ..game_manager import game_manager, get_current_game
 from ..player import Player, PlayerOut
+
+ROLE_REVEAL_TIMEOUT_ATTEMPTS = 100
+POLLING_INTERVAL_SECONDS = 0.1
 
 
 class RemovePlayerResponse(BaseModel):
@@ -144,9 +146,6 @@ async def get_player_role(
     async with game_manager.locked_game() as game:
         player = get_player_or_404(game, name)
 
-    ROLE_REVEAL_TIMEOUT_ATTEMPTS = 100
-    POLLING_INTERVAL_SECONDS = 0.1
-
     # Poll for role reveal WITHOUT holding the lock
     # This prevents deadlock when multiple players are waiting for reveal
     polling_attempts = 0
@@ -162,10 +161,7 @@ async def get_player_role(
         timeout_seconds = ROLE_REVEAL_TIMEOUT_ATTEMPTS * POLLING_INTERVAL_SECONDS
         raise HTTPException(
             status_code=408,
-            detail=(
-                f"Role reveal timed out after {timeout_seconds}s. "
-                "Check if roles are set to be revealed."
-            ),
+            detail=(f"Role reveal timed out after {timeout_seconds}s. Check if roles are set to be revealed."),
         )
 
     # Return the player data
@@ -276,16 +272,12 @@ async def swap_character(
     async with game_ctx as game:
         player1 = game.get_player_by_name(req.name1)
         if player1 is None:
-            raise HTTPException(
-                status_code=404, detail=f"Player not found: {req.name1}"
-            )
+            raise HTTPException(status_code=404, detail=f"Player not found: {req.name1}")
         character1 = player1.character
 
         player2 = game.get_player_by_name(req.name2)
         if player2 is None:
-            raise HTTPException(
-                status_code=404, detail=f"Player not found: {req.name2}"
-            )
+            raise HTTPException(status_code=404, detail=f"Player not found: {req.name2}")
         character2 = player2.character
 
         player1.set_character(character2)
@@ -302,9 +294,7 @@ class RenamePlayerRequest(BaseModel):
     """Request to rename a player in the game."""
 
     name: str = Field(..., description="Current player name", examples=["Alice"])
-    new_name: str = Field(
-        ..., description="New player name", examples=["Alice Johnson"]
-    )
+    new_name: str = Field(..., description="New player name", examples=["Alice Johnson"])
 
 
 @router.post("/rename", responses={404: {"description": "Player not found"}})
@@ -335,9 +325,7 @@ async def remove_player(
     async with game_ctx as game:
         try:
             game.remove_player_by_name(req.name)
-            return RemovePlayerResponse(
-                status="success", remaining_players=[p.name for p in game.players]
-            )
+            return RemovePlayerResponse(status="success", remaining_players=[p.name for p in game.players])
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
 

@@ -22,7 +22,7 @@ class PlaySoundResponse(BaseModel):
     },
 )
 async def play_sound(
-    name: str = Path(..., description="Name of the sound effect to play", examples=["bell"])
+    name: str = Path(..., description="Name of the sound effect to play", examples=["bell"]),
 ) -> PlaySoundResponse:
     """Play a sound effect."""
     sound_name = SoundName.from_str(name)
@@ -41,7 +41,4 @@ async def play_sound(
 async def list_sounds() -> dict[str, list[str]]:
     """Return the available sounds organized by category."""
     # Convert SoundName enums to strings for JSON serialization
-    return {
-        category: [sound.value for sound in sound_list]
-        for category, sound_list in sounds.items()
-    }
+    return {category: [sound.value for sound in sound_list] for category, sound_list in sounds.items()}

@@ -100,28 +100,24 @@ class TroubleBrewing(Script):
         ),
         NightStep(
             name="Washerwoman",
-            description="Show the Townsfolk character token. "
-            + "Point to both the TOWNSFOLK and WRONG players.",
+            description="Show the Townsfolk character token. " + "Point to both the TOWNSFOLK and WRONG players.",
             always_show=False,
         ),
         NightStep(
             name="Librarian",
-            description="Show the Outsider character token. "
-            + "Point to both the OUTSIDER and WRONG players.",
+            description="Show the Outsider character token. " + "Point to both the OUTSIDER and WRONG players.",
             always_show=False,
         ),
         NightStep(
             name="Investigator",
-            description="Show the Minion character token. "
-            + "Point to both the MINION and WRONG players.",
+            description="Show the Minion character token. " + "Point to both the MINION and WRONG players.",
             always_show=False,
         ),
         NightStep(name="Chef", description="Give a finger signal.", always_show=False),
         NightStep(name="Empath", description="Give a finger signal.", always_show=False),
         NightStep(
             name="Fortune Teller",
-            description="The Fortune Teller chooses 2 players. "
-            + "Nod if either is the Demon (or the RED HERRING).",
+            description="The Fortune Teller chooses 2 players. " + "Nod if either is the Demon (or the RED HERRING).",
             always_show=False,
         ),
         NightStep(name="Butler", description="The Butler chooses a player.", always_show=False),
@@ -140,9 +136,7 @@ class TroubleBrewing(Script):
         ),
         NightStep(name="Poisoner", description="The Poisoner chooses a player.", always_show=False),
         NightStep(name="Monk", description="The Monk chooses a player.", always_show=False),
-        NightStep(
-            name="Spy", description="Show the Grimoire for as long as the Spy needs.", always_show=False
-        ),
+        NightStep(name="Spy", description="Show the Grimoire for as long as the Spy needs.", always_show=False),
         NightStep(
             name="Scarlet Woman",
             description="If the Scarlet Woman became the Imp today, "
@@ -175,15 +169,13 @@ class TroubleBrewing(Script):
         NightStep(name="Empath", description="Give a finger signal.", always_show=False),
         NightStep(
             name="Fortune Teller",
-            description="The Fortune Teller chooses 2 players. "
-            + "Nod if either is the Demon (or the RED HERRING).",
+            description="The Fortune Teller chooses 2 players. " + "Nod if either is the Demon (or the RED HERRING).",
             always_show=False,
         ),
         NightStep(name="Butler", description="The Butler chooses a player.", always_show=False),
         NightStep(
             name="Dawn",
-            description="Wait a few seconds. "
-            + "Call for eyes open & immediately say who died.",
+            description="Wait a few seconds. " + "Call for eyes open & immediately say who died.",
             always_show=True,
         ),
     ]

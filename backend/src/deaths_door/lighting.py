@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 try:
     import serial
     import serial.tools.list_ports
+
     SERIAL_AVAILABLE = True
 except ImportError:
     logger.warning("pyserial not available. DMX support will be disabled.")
@@ -67,9 +68,7 @@ class OpenDMXController:
         """
         self.dmx_data = [0] * 512  # DMX universe: 512 channels
         self.serial_port = None
-        self._executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="dmx"
-        )
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="dmx")
 
         if not SERIAL_AVAILABLE:
             raise RuntimeError("pyserial not available")
@@ -89,7 +88,7 @@ class OpenDMXController:
                 bytesize=serial.EIGHTBITS,
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_TWO,
-                timeout=1
+                timeout=1,
             )
             logger.info(f"Successfully opened OpenDMX on port {port}")
         except Exception as e:
@@ -111,16 +110,15 @@ class OpenDMXController:
             # Look for FTDI devices in description, manufacturer, or VID
             # FTDI VID is 0403
             is_ftdi = (
-                "FTDI" in (port.description or "").upper() or
-                "FT232" in (port.description or "").upper() or
-                "FTDI" in (port.manufacturer or "").upper() or
-                "VID:PID=0403:" in (port.hwid or "").upper()
+                "FTDI" in (port.description or "").upper()
+                or "FT232" in (port.description or "").upper()
+                or "FTDI" in (port.manufacturer or "").upper()
+                or "VID:PID=0403:" in (port.hwid or "").upper()
             )
 
             if is_ftdi:
                 logger.info(
-                    f"Found FTDI device: {port.device} - {port.description} "
-                    f"(Manufacturer: {port.manufacturer})"
+                    f"Found FTDI device: {port.device} - {port.description} (Manufacturer: {port.manufacturer})"
                 )
                 return port.device
 
@@ -193,9 +191,7 @@ class XPCLEOYZMovingHead:
     11-channel DMX configuration from manual.
     """
 
-    def __init__(
-        self, controller: OpenDMXController, start_channel: int, name: str = ""
-    ):
+    def __init__(self, controller: OpenDMXController, start_channel: int, name: str = ""):
         """
         Initialize the moving head fixture.
 
@@ -282,9 +278,7 @@ class XPCLEOYZMovingHead:
 class FogMachineStub:
     """Stub fixture for fog machine - to be configured later."""
 
-    def __init__(
-        self, controller: OpenDMXController, start_channel: int, name: str = ""
-    ):
+    def __init__(self, controller: OpenDMXController, start_channel: int, name: str = ""):
         """
         Initialize the fog machine stub.
 
@@ -328,9 +322,7 @@ class PlayerPosition:
     @classmethod
     def from_dict(cls, data: dict[str, int]) -> PlayerPosition:
         """Create from dictionary."""
-        return cls(
-            player_num=data["player_num"], pan=data["pan"], tilt=data["tilt"]
-        )
+        return cls(player_num=data["player_num"], pan=data["pan"], tilt=data["tilt"])
 
 
 @dataclass
@@ -374,9 +366,7 @@ class LightingSequence:
         self.is_running = False
         self._task: asyncio.Task[None] | None = None
 
-    def add_cue(
-        self, timestamp: float, action: Callable[[], None], description: str = ""
-    ) -> None:
+    def add_cue(self, timestamp: float, action: Callable[[], None], description: str = "") -> None:
         """
         Add a cue to the sequence.
 
@@ -512,32 +502,17 @@ class LightingManager:
 
             # Add fixtures at specific DMX addresses
             # Light 1: channels 1-11
-            self.light1 = XPCLEOYZMovingHead(
-                controller=self.controller,
-                start_channel=1,
-                name="Light1"
-            )
+            self.light1 = XPCLEOYZMovingHead(controller=self.controller, start_channel=1, name="Light1")
 
             # Light 2: channels 12-22
-            self.light2 = XPCLEOYZMovingHead(
-                controller=self.controller,
-                start_channel=12,
-                name="Light2"
-            )
+            self.light2 = XPCLEOYZMovingHead(controller=self.controller, start_channel=12, name="Light2")
 
             # Fog machine stub: channel 23+ (to be configured later)
-            self.fog = FogMachineStub(
-                controller=self.controller,
-                start_channel=23,
-                name="Fog"
-            )
+            self.fog = FogMachineStub(controller=self.controller, start_channel=23, name="Fog")
 
             logger.info("Successfully added lighting fixtures")
         except Exception as e:
-            logger.warning(
-                f"Failed to initialize DMX controller: {e}. "
-                "Continuing without lighting support."
-            )
+            logger.warning(f"Failed to initialize DMX controller: {e}. Continuing without lighting support.")
             self.connected = False
 
         # Load calibrated positions
@@ -552,10 +527,7 @@ class LightingManager:
             try:
                 with open(self.positions_file) as f:
                     data = json.load(f)
-                    self.positions = {
-                        int(k): PlayerPosition.from_dict(v)
-                        for k, v in data.items()
-                    }
+                    self.positions = {int(k): PlayerPosition.from_dict(v) for k, v in data.items()}
                 logger.info(f"Loaded {len(self.positions)} player positions")
             except Exception as e:
                 logger.warning(f"Failed to load player positions: {e}")
@@ -601,9 +573,7 @@ class LightingManager:
         else:
             logger.warning(f"Invalid fixture type for channel control: {fixture_id}")
 
-    def set_position(
-        self, fixture_id: int, pan: int, tilt: int, fine: bool = True
-    ) -> None:
+    def set_position(self, fixture_id: int, pan: int, tilt: int, fine: bool = True) -> None:
         """
         Set pan/tilt position of a fixture.
 
@@ -648,9 +618,7 @@ class LightingManager:
         self._save_positions()
         logger.info(f"Saved position for player {player_num}")
 
-    def spotlight_player(
-        self, player_num: int, brightness: int = 255, fixture_id: int = 1
-    ) -> None:
+    def spotlight_player(self, player_num: int, brightness: int = 255, fixture_id: int = 1) -> None:
         """
         Spotlight a specific player using saved position.
 
@@ -774,9 +742,7 @@ class LightingManager:
             self.light2.set_dimmer(255)
             self.light2.set_strobe(0)
 
-    def _get_fixture(
-        self, fixture_id: int
-    ) -> XPCLEOYZMovingHead | FogMachineStub | None:
+    def _get_fixture(self, fixture_id: int) -> XPCLEOYZMovingHead | FogMachineStub | None:
         """Get fixture by ID."""
         if fixture_id == 1:
             return self.light1

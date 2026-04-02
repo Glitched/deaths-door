@@ -159,10 +159,7 @@ async def test_character_descriptions_are_meaningful():
 
     # Fortune Teller should mention demons and false positives
     assert "demon" in fortune_teller.description.lower()
-    assert (
-        "false" in fortune_teller.description.lower()
-        or "register" in fortune_teller.description.lower()
-    )
+    assert "false" in fortune_teller.description.lower() or "register" in fortune_teller.description.lower()
 
 
 @pytest.mark.anyio

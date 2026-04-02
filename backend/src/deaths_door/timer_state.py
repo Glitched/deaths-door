@@ -21,9 +21,7 @@ class TimerState:
     def __init__(self):
         """Initialize the timer and OBS manager."""
         self._lock = asyncio.Lock()
-        self._obs_manager = ObsManager(
-            host="localhost", port=4455, password=Config.get_obs_password()
-        )
+        self._obs_manager = ObsManager(host="localhost", port=4455, password=Config.get_obs_password())
         self._tick_task = None
 
         try:

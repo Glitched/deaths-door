@@ -61,9 +61,7 @@ async def test_game_with_no_available_roles():
 async def test_maximum_players_scenario():
     """Test game with maximum realistic number of players."""
     # Use all characters from the script for this test
-    all_character_names = [
-        char.name for char in Game(ScriptName.TROUBLE_BREWING).script.characters
-    ]
+    all_character_names = [char.name for char in Game(ScriptName.TROUBLE_BREWING).script.characters]
     test_case = GameTestCase(roles=all_character_names)
 
     # Add many players (up to available roles)
@@ -78,10 +76,7 @@ async def test_maximum_players_scenario():
     # Should have added some players
     assert players_added > 0
     assert len(test_case.game.players) == players_added
-    assert (
-        len(test_case.game.included_roles)
-        == len(test_case.game.script.characters) - players_added
-    )
+    assert len(test_case.game.included_roles) == len(test_case.game.script.characters) - players_added
 
 
 @pytest.mark.anyio
@@ -106,9 +101,7 @@ async def test_all_players_dead_scenario():
 
     # Night steps should only show always_show steps
     other_night_steps = list(game.get_other_night_steps())
-    character_specific_steps = [
-        step for step in other_night_steps if not step.always_show
-    ]
+    character_specific_steps = [step for step in other_night_steps if not step.always_show]
     assert len(character_specific_steps) == 0
 
 
@@ -205,23 +198,17 @@ async def test_api_error_handling():
 @pytest.mark.anyio
 async def test_concurrent_player_operations():
     """Test that concurrent operations don't break game state."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/game/new", json={"script_name": "trouble_brewing"})
         # Add roles so players can be assigned
-        await client.post(
-            "/characters/add/multi", json={"names": ["Imp", "Chef", "Butler"]}
-        )
+        await client.post("/characters/add/multi", json={"names": ["Imp", "Chef", "Butler"]})
 
         # Add a player
         await client.post("/players/add", json={"name": "Alice"})
 
         # Simulate concurrent operations that might conflict
         operations = [
-            client.post(
-                "/players/set_alive", json={"name": "Alice", "is_alive": False}
-            ),
+            client.post("/players/set_alive", json={"name": "Alice", "is_alive": False}),
             client.post(
                 "/players/add_status_effect",
                 json={"name": "Alice", "status_effect": "Poisoned"},
@@ -291,9 +278,7 @@ async def test_alignment_consistency():
 @pytest.mark.anyio
 async def test_game_state_consistency_after_operations():
     """Test that game state remains consistent after various operations."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/game/new", json={"script_name": "trouble_brewing"})
         # Add roles so players can be assigned
         await client.post(
@@ -304,17 +289,11 @@ async def test_game_state_consistency_after_operations():
         # Perform a series of operations
         await client.post("/players/add", json={"name": "Alice"})
         await client.post("/players/add", json={"name": "Bob"})
-        await client.post(
-            "/players/add_traveler", json={"name": "Charlie", "traveler": "Beggar"}
-        )
+        await client.post("/players/add_traveler", json={"name": "Charlie", "traveler": "Beggar"})
 
         # Kill and revive
-        await client.post(
-            "/players/set_alive", json={"name": "Alice", "is_alive": False}
-        )
-        await client.post(
-            "/players/set_alive", json={"name": "Alice", "is_alive": True}
-        )
+        await client.post("/players/set_alive", json={"name": "Alice", "is_alive": False})
+        await client.post("/players/set_alive", json={"name": "Alice", "is_alive": True})
 
         # Add and remove status effects
         await client.post(

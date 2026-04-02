@@ -10,8 +10,7 @@ class Apprentice(Character):
         """Initialize the Apprentice character."""
         self.name = "Apprentice"
         self.description = (
-            "On your 1st night, you gain a Townsfolk ability "
-            + "(if good), or a Minion ability (if evil)."
+            "On your 1st night, you gain a Townsfolk ability " + "(if good), or a Minion ability (if evil)."
         )
         self.category = CharacterType.TRAVELER
         self.alignment = Alignment.UNKNOWN

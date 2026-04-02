@@ -26,7 +26,7 @@ class Config:
         password = os.getenv("OBS_PASSWORD")
         if not password:
             # Allow development mode with warning
-            password = "dev_only"
+            password = "dev_only"  # noqa: S105
         return password
 
     @staticmethod

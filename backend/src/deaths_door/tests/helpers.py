@@ -29,9 +29,7 @@ def create_test_game_with_roles(
     game.included_roles = game.script.characters.copy()
 
     # Only include the specified roles
-    game.included_roles = [
-        char for char in game.script.characters if char.name in roles
-    ]
+    game.included_roles = [char for char in game.script.characters if char.name in roles]
 
     return game
 
@@ -85,9 +83,7 @@ async def add_test_players(client: AsyncClient, player_names: list[str]) -> list
     return players
 
 
-async def add_test_traveler(
-    client: AsyncClient, player_name: str, traveler_name: str
-) -> PlayerOut:
+async def add_test_traveler(client: AsyncClient, player_name: str, traveler_name: str) -> PlayerOut:
     """
     Add a traveler to the game and return their data.
 
@@ -100,9 +96,7 @@ async def add_test_traveler(
         Player data parsed as PlayerOut model
 
     """
-    response = await client.post(
-        "/players/add_traveler", json={"name": player_name, "traveler": traveler_name}
-    )
+    response = await client.post("/players/add_traveler", json={"name": player_name, "traveler": traveler_name})
     assert response.status_code == 200
     return PlayerOut(**response.json())
 
@@ -120,6 +114,7 @@ class GameTestCase:
         script_name: ScriptName = ScriptName.TROUBLE_BREWING,
         roles: list[str] | None = None,
     ):
+        """Create a test game with the given script and roles."""
         self.script_name = script_name
         self.game = create_test_game_with_roles(script_name, roles)
 
