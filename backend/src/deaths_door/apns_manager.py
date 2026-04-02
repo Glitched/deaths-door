@@ -104,7 +104,9 @@ class APNSManager:
 
         assert self._bundle_id is not None
 
-        end_time = time.time() + seconds
+        # Swift Date decodes as timeIntervalSinceReferenceDate (Jan 1, 2001),
+        # not Unix epoch (Jan 1, 1970). Offset: 978307200 seconds.
+        end_time = (time.time() + seconds) - 978307200
         content_state = {
             "running": is_running,
             "endTime": end_time,

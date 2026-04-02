@@ -7,7 +7,7 @@ requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.115.12",
     "uvicorn[standard]>=0.34.3",
-    "httpx>=0.28.1",
+    "httpx[http2]>=0.28.1",
     "pygame-ce>=2.5.2",
     "obs-websocket-py>=1.0",
     "pyserial>=3.5",
