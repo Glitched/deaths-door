@@ -7,7 +7,7 @@ from fastapi.exceptions import HTTPException
 from pydantic import BaseModel, Field
 
 from ..character import CharacterOut
-from ..events import EventType, FirstNightSet, NightStepSet
+from ..events import EventType, FirstNightSet, NightStepSet, describe_event
 from ..game_manager import game_manager
 from ..game_state import game_state_to_included_role_outs, player_state_to_out
 from ..night_step import NightStep
@@ -257,7 +257,8 @@ async def get_night_steps() -> list[NightStep]:
 class EventOut(BaseModel):
     """A game event for the history endpoint."""
 
-    sequence: int = Field(..., description="Event sequence number (0-indexed)")
+    version: int = Field(..., description="Version after this event (1-indexed)")
+    description: str = Field(..., description="Human-readable description of the event")
     event_type: EventType = Field(..., description="Type of event")
     timestamp: str = Field(..., description="ISO 8601 timestamp")
     payload: dict[str, object] = Field(..., description="Event payload data")
@@ -281,7 +282,8 @@ async def get_game_history() -> HistoryResponse:
         version=state.version,
         events=[
             EventOut(
-                sequence=e.sequence,
+                version=e.sequence + 1,
+                description=describe_event(e.payload),
                 event_type=e.payload.type,
                 timestamp=e.timestamp.isoformat(),
                 payload=e.payload.model_dump(exclude={"type"}),

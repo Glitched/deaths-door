@@ -198,3 +198,49 @@ class GameEvent(BaseModel, frozen=True):
     sequence: int
     timestamp: datetime
     payload: EventPayload
+
+
+def describe_event(payload: EventPayload) -> str:
+    """Return a human-readable description of an event payload."""
+    match payload:
+        case GameCreated(script_name=s):
+            return f"Game created with script {s}"
+        case NightStepSet(step=s):
+            return f"Night step set to {s}"
+        case FirstNightSet(is_first_night=v):
+            return "Set to first night" if v else "Set to subsequent night"
+        case RoleVisibilitySet(should_reveal_roles=v):
+            return "Roles revealed" if v else "Roles hidden"
+        case RoleIncluded(name=n):
+            return f"Added {n} to role pool"
+        case RolesIncluded(names=names):
+            return f"Added {len(names)} roles: {', '.join(names)}"
+        case RoleRemoved(name=n):
+            return f"Removed {n} from role pool"
+        case PlayerAdded(player_name=p, character_name=c):
+            return f"{p} joined as {c}"
+        case TravelerAdded(player_name=p, traveler_name=t):
+            return f"{p} joined as traveler {t}"
+        case PlayerRemoved(player_name=p):
+            return f"{p} removed from game"
+        case PlayerRenamed(old_name=old, new_name=new):
+            return f"{old} renamed to {new}"
+        case CharactersSwapped(name1=a, name2=b):
+            return f"{a} and {b} swapped characters"
+        case PlayerAliveSet(player_name=p, is_alive=alive, cleared_effects=cleared):
+            action = "resurrected" if alive else "died"
+            desc = f"{p} {action}"
+            if cleared:
+                effects = ", ".join(f"{e} from {n}" for n, e in cleared)
+                desc += f" (cleared: {effects})"
+            return desc
+        case DeadVoteUsedSet(player_name=p, has_used_dead_vote=v):
+            return f"{p} {'used' if v else 'recovered'} their dead vote"
+        case PlayerAlignmentSet(player_name=p, alignment=a):
+            return f"{p} alignment changed to {a}"
+        case StatusEffectAdded(player_name=p, effect=e):
+            return f"{p} gained {e}"
+        case StatusEffectRemoved(player_name=p, effect=e):
+            return f"{p} lost {e}"
+        case _:
+            return "Unknown event"
