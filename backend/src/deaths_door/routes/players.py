@@ -24,6 +24,7 @@ from ..events import (
 from ..game_manager import game_manager
 from ..game_state import GameState, PlayerState, player_state_to_out
 from ..player import PlayerOut
+from .timer import push_live_activity_update
 
 ROLE_REVEAL_TIMEOUT_ATTEMPTS = 100
 POLLING_INTERVAL_SECONDS = 0.1
@@ -114,6 +115,8 @@ async def add_player(req: AddPlayerRequest) -> PlayerOut:
             alignment=character.alignment.value,
         )
     )
+    alive = sum(1 for p in new_state.players if p.is_alive)
+    await push_live_activity_update(alive, len(new_state.players))
     return _to_out(new_state, req.name)
 
 
@@ -160,6 +163,8 @@ async def add_player_as_traveler(req: AddTravelerRequest) -> PlayerOut:
             alignment=traveler.alignment.value,
         )
     )
+    alive = sum(1 for p in new_state.players if p.is_alive)
+    await push_live_activity_update(alive, len(new_state.players))
     return _to_out(new_state, req.name)
 
 
@@ -236,6 +241,8 @@ async def set_player_alive(req: SetPlayerAliveRequest) -> PlayerOut:
             cleared_effects=cleared_effects,
         )
     )
+    alive = sum(1 for p in new_state.players if p.is_alive)
+    await push_live_activity_update(alive, len(new_state.players))
     return _to_out(new_state, req.name)
 
 
@@ -352,6 +359,8 @@ async def remove_player(req: RemovePlayerRequest) -> RemovePlayerResponse:
     get_player_or_404(state, req.name)
 
     new_state = await game_manager.dispatch(PlayerRemoved(player_name=req.name))
+    alive = sum(1 for p in new_state.players if p.is_alive)
+    await push_live_activity_update(alive, len(new_state.players))
     return RemovePlayerResponse(
         status="success",
         remaining_players=[p.name for p in new_state.players],

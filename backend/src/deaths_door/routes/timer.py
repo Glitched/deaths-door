@@ -40,6 +40,16 @@ timer = APIRouter(prefix="/timer", tags=["Timer"])
 state = TimerState()
 
 
+async def push_live_activity_update(players_alive: int, total_players: int) -> None:
+    """Push a Live Activity update with current timer state and player counts.
+
+    Called from player routes when alive/total counts change.
+    """
+    seconds = await state.get_seconds()
+    is_running = await state.get_is_running()
+    await state.apns_manager.send_timer_update(seconds, is_running, players_alive, total_players)
+
+
 @timer.get("/fetch")
 async def fetch_timer() -> TimerStateResponse:
     """Fetch the current state of the timer."""
