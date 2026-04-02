@@ -12,23 +12,22 @@ I'm learning jj - when using jj commands, please explain what the equivalent git
 
 ### Backend (Python/FastAPI)
 ```bash
-# Setup
+# Setup (uv manages Python and dependencies)
 cd backend
-poetry install
-poetry shell
+uv sync
 
 # Run development server
 make run
-# or directly: uvicorn src.deaths_door.main:app --reload --host 0.0.0.0
+# or directly: uv run uvicorn src.deaths_door.main:app --reload --host 0.0.0.0
 
 # Testing
-poetry run pytest
-poetry run pytest --cov=deaths_door --cov-report=html
+uv run pytest
+uv run pytest --cov=deaths_door --cov-report=html
 
 # Linting and type checking
-poetry run ruff check src/
-poetry run ruff format src/
-poetry run pyright src/
+uv run ruff check src/
+uv run ruff format src/
+uv run pyright src/
 ```
 
 ### Frontend (Next.js)
@@ -81,7 +80,7 @@ This is a **Blood on the Clocktower game management system** with streaming inte
 
 ### Environment Requirements
 
-- Python 3.12+ with Poetry for dependency management
+- Python 3.12+ with uv for dependency management
 - **Optional:** OBS Studio with WebSocket server enabled for streaming features
   - Set `OBS_PASSWORD` environment variable for OBS connection
   - Set `OBS_REQUIRED=true` to fail startup if OBS unavailable (production mode)
