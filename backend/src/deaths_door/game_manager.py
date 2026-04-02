@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
@@ -65,12 +66,15 @@ class GameManager:
     async def get_state(self) -> GameState:
         """Get the current game state, auto-creating if none exists."""
         if self._state is None:
-            # Try loading the most recent game from the store
-            game_ids = self._store.get_all_game_ids()
-            if game_ids:
-                await self.load_game(game_ids[-1])
-            else:
+            if os.environ.get("SAMPLE_GAME", "").lower() in ("1", "true"):
                 await self._create_sample_game()
+            else:
+                # Try loading the most recent game, or create an empty one
+                game_ids = self._store.get_all_game_ids()
+                if game_ids:
+                    await self.load_game(game_ids[-1])
+                else:
+                    await self.create_game("trouble_brewing")
         return self.state
 
     async def _create_sample_game(self) -> None:
