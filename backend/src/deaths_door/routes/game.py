@@ -158,35 +158,40 @@ async def get_game_state(
     game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
 ) -> GameStateResponse:
     """Get the complete game state in a single request."""
-    # Get game state first
+    # Capture game state while holding the lock
     async with game_ctx as game:
-        # Get appropriate night steps based on is_first_night
         if game.is_first_night:
             night_steps = list(game.get_first_night_steps())
         else:
             night_steps = list(game.get_other_night_steps())
 
-        # Capture all game state while holding the lock
-        game_state = {
-            "script_name": game.script.name.value,
-            "players": [player.to_out() for player in game.players],
-            "current_night_step": game.current_night_step,
-            "is_first_night": game.is_first_night,
-            "should_reveal_roles": game.should_reveal_roles,
-            "status_effects": game.get_status_effects(),
-            "included_roles": [role.to_out() for role in game.included_roles],
-            "night_steps": night_steps,
-            "living_player_count": game.living_player_count,
-            "execution_threshold": game.execution_threshold,
-            "dead_players_with_vote": game.get_dead_players_with_vote(),
-        }
+        script_name = game.script.name.value
+        players = [player.to_out() for player in game.players]
+        current_night_step = game.current_night_step
+        is_first_night = game.is_first_night
+        should_reveal_roles = game.should_reveal_roles
+        status_effects = game.get_status_effects()
+        included_roles = [role.to_out() for role in game.included_roles]
+        living_player_count = game.living_player_count
+        execution_threshold = game.execution_threshold
+        dead_players_with_vote = game.get_dead_players_with_vote()
 
     # Get timer state AFTER releasing game lock to avoid lock ordering issues
     timer_is_running = await timer_routes.state.get_is_running()
     timer_seconds = await timer_routes.state.get_seconds()
 
     return GameStateResponse(
-        **game_state,
+        script_name=script_name,
+        players=players,
+        current_night_step=current_night_step,
+        is_first_night=is_first_night,
+        should_reveal_roles=should_reveal_roles,
+        status_effects=status_effects,
+        included_roles=included_roles,
+        night_steps=night_steps,
+        living_player_count=living_player_count,
+        execution_threshold=execution_threshold,
+        dead_players_with_vote=dead_players_with_vote,
         timer=timer_routes.TimerStateResponse(
             is_running=timer_is_running,
             seconds=timer_seconds,

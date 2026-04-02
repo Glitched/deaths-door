@@ -11,17 +11,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
+import serial
+import serial.tools.list_ports
+
 logger = logging.getLogger(__name__)
-
-# Try to import serial for DMX control
-try:
-    import serial
-    import serial.tools.list_ports
-
-    SERIAL_AVAILABLE = True
-except ImportError:
-    logger.warning("pyserial not available. DMX support will be disabled.")
-    SERIAL_AVAILABLE = False
 
 
 class LightingScene(str, Enum):
@@ -70,9 +63,6 @@ class OpenDMXController:
         self.serial_port = None
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="dmx")
 
-        if not SERIAL_AVAILABLE:
-            raise RuntimeError("pyserial not available")
-
         # Auto-detect FTDI device if no port specified
         if port is None:
             port = self._find_ftdi_port()
@@ -102,9 +92,6 @@ class OpenDMXController:
             Port name if found, None otherwise
 
         """
-        if not SERIAL_AVAILABLE:
-            return None
-
         ports = serial.tools.list_ports.comports()
         for port in ports:
             # Look for FTDI devices in description, manufacturer, or VID
@@ -493,9 +480,6 @@ class LightingManager:
 
         # Try to initialize DMX controller
         try:
-            if not SERIAL_AVAILABLE:
-                raise RuntimeError("pyserial library not available")
-
             self.controller = OpenDMXController()
             self.connected = True
             logger.info("Successfully initialized DMX controller")

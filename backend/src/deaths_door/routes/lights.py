@@ -89,8 +89,8 @@ class CalibrationSaveRequest(BaseModel):
 class SpotlightRequest(BaseModel):
     """Request to spotlight a player."""
 
-    brightness: int = Field(255, description="Brightness level (0-255)", ge=0, le=255)
-    fixture_id: int = Field(1, description="Fixture ID to use (1 or 2)", ge=1, le=2)
+    brightness: int = Field(default=255, description="Brightness level (0-255)", ge=0, le=255)
+    fixture_id: int = Field(default=1, description="Fixture ID to use (1 or 2)", ge=1, le=2)
 
 
 # Scene Control Endpoints
@@ -178,9 +178,10 @@ async def trigger_integrated_scene(
 # Granular Control Endpoints
 @router.post("/fixture/{fixture_id}/channel/{channel}")
 async def set_channel(
+    *,
     fixture_id: int = Path(..., description="Fixture ID (1=Light1, 2=Light2, 3=Fog)", ge=1, le=3),
     channel: int = Path(..., description="Channel number (1-11)", ge=1, le=11),
-    request: ChannelSetRequest = ...,
+    request: ChannelSetRequest,
 ) -> OperationResponse:
     """
     Set a specific DMX channel value on a fixture.
@@ -213,8 +214,9 @@ async def set_channel(
 
 @router.post("/fixture/{fixture_id}/position")
 async def set_position(
+    *,
     fixture_id: int = Path(..., description="Fixture ID (1 or 2)", ge=1, le=2),
-    request: PositionSetRequest = ...,
+    request: PositionSetRequest,
 ) -> OperationResponse:
     """
     Set pan/tilt position of a moving head fixture.
@@ -251,8 +253,9 @@ async def blackout() -> OperationResponse:
 # Calibration Endpoints
 @router.post("/calibrate/player/{player_num}/save")
 async def save_player_position(
+    *,
     player_num: int = Path(..., description="Player number (chair position)", ge=1),
-    request: CalibrationSaveRequest = ...,
+    request: CalibrationSaveRequest,
 ) -> OperationResponse:
     """
     Save a calibrated position for a specific player.

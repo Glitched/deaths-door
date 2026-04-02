@@ -335,7 +335,7 @@ async def test_concurrent_role_reveal_no_deadlock():
         await add_test_players(client, player_names)
 
         # Track results from concurrent requests
-        results = []
+        results: list[tuple[str, int]] = []
 
         async def get_player_role_after_delay(player_name: str):
             """Request player role. Will wait for reveal flag."""
