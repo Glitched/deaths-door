@@ -13,9 +13,8 @@ Currently, we're building out a representation of game state to provide sensible
 1. Install the font [Help Me](https://www.dafont.com/help-me.font)
 2. Install and run [OBS](https://obsproject.com/downloads)
 3. Enable the websocket and set the password in your environment as `OBS_PASSWORD`
-4. Install packages via [poetry](https://python-poetry.org/docs/) with `poetry install`
-5. Entry the poetry virtual env with `poetry shell`
-6. Run the backend with `uvicorn src.deaths_door.main:app`. You may add `--reload` to the command to have the server restart when you change the code.
+4. Install packages via [uv](https://docs.astral.sh/uv/) with `uv sync`
+5. Run the backend with `uv run uvicorn src.deaths_door.main:app`. You may add `--reload` to the command to have the server restart when you change the code.
 
 ## Frontend
 

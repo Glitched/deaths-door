@@ -333,3 +333,41 @@ async def test_get_game_state_includes_status_effects():
         # Verify status effects field is present (even if empty)
         assert "status_effects" in state
         assert isinstance(state["status_effects"], list)
+
+
+@pytest.mark.anyio
+async def test_get_game_state_includes_vote_info():
+    """Test that game state includes vote tracking fields."""
+    async with get_test_client() as client:
+        await setup_game_with_roles(client)
+        await add_test_players(client, ["Alice", "Bob", "Charlie", "Dave", "Eve"])
+
+        response = await client.get("/game/state")
+        assert response.status_code == 200
+        state = response.json()
+
+        # 5 living players, threshold is 3
+        assert state["living_player_count"] == 5
+        assert state["execution_threshold"] == 3
+        assert state["dead_players_with_vote"] == []
+
+        # Kill Alice
+        await client.post("/players/set_alive", json={"name": "Alice", "is_alive": False})
+
+        response = await client.get("/game/state")
+        state = response.json()
+
+        # 4 living, threshold is 2, Alice has her dead vote
+        assert state["living_player_count"] == 4
+        assert state["execution_threshold"] == 2
+        assert state["dead_players_with_vote"] == ["Alice"]
+
+        # Alice uses her dead vote
+        await client.post(
+            "/players/set_has_used_dead_vote",
+            json={"name": "Alice", "has_used_dead_vote": True},
+        )
+
+        response = await client.get("/game/state")
+        state = response.json()
+        assert state["dead_players_with_vote"] == []

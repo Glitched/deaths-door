@@ -3,7 +3,7 @@ name = "deaths-door"
 version = "0.1.0"
 description = "A tool to facilitate our games of Blood on the Clocktower."
 authors = [{ name = "Ryan Slama", email = "ryanmslama@gmail.com" }]
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.115.12",
     "uvicorn[standard]>=0.34.3",

@@ -80,7 +80,7 @@ This is a **Blood on the Clocktower game management system** with streaming inte
 
 ### Environment Requirements
 
-- Python 3.12+ with uv for dependency management
+- Python 3.14+ with uv for dependency management
 - **Optional:** OBS Studio with WebSocket server enabled for streaming features
   - Set `OBS_PASSWORD` environment variable for OBS connection
   - Set `OBS_REQUIRED=true` to fail startup if OBS unavailable (production mode)

@@ -134,6 +134,18 @@ class GameStateResponse(BaseModel):
         ...,
         description="Night steps for the current night (filtered based on is_first_night)",
     )
+    living_player_count: int = Field(
+        ...,
+        description="Number of living players",
+    )
+    execution_threshold: int = Field(
+        ...,
+        description="Number of votes needed to execute (≥50% of living players)",
+    )
+    dead_players_with_vote: list[str] = Field(
+        ...,
+        description="Names of dead players who haven't used their dead vote",
+    )
     timer: timer_routes.TimerStateResponse = Field(
         ...,
         description="Current timer state (is_running and seconds remaining)",
@@ -163,6 +175,9 @@ async def get_game_state(
             "status_effects": game.get_status_effects(),
             "included_roles": [role.to_out() for role in game.included_roles],
             "night_steps": night_steps,
+            "living_player_count": game.living_player_count,
+            "execution_threshold": game.execution_threshold,
+            "dead_players_with_vote": game.get_dead_players_with_vote(),
         }
 
     # Get timer state AFTER releasing game lock to avoid lock ordering issues

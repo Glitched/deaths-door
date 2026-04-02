@@ -216,6 +216,79 @@ async def test_remove_nonexistent_player():
 
 
 @pytest.mark.anyio
+async def test_living_player_count():
+    """Test living player count updates as players die."""
+    test_case = GameTestCase(roles=["Imp", "Chef", "Monk"])
+    test_case.add_players_with_roles(
+        [("Alice", "Imp"), ("Bob", "Chef"), ("Charlie", "Monk")]
+    )
+
+    assert test_case.game.living_player_count == 3
+
+    test_case.game.set_player_alive_status("Alice", False)
+    assert test_case.game.living_player_count == 2
+
+    test_case.game.set_player_alive_status("Bob", False)
+    assert test_case.game.living_player_count == 1
+
+
+@pytest.mark.anyio
+async def test_execution_threshold():
+    """Test execution threshold is ceil(living / 2)."""
+    test_case = GameTestCase(roles=["Imp", "Chef", "Monk", "Empath", "Poisoner"])
+    test_case.add_players_with_roles(
+        [
+            ("Alice", "Imp"),
+            ("Bob", "Chef"),
+            ("Charlie", "Monk"),
+            ("Dave", "Empath"),
+            ("Eve", "Poisoner"),
+        ]
+    )
+
+    # 5 living -> threshold 3
+    assert test_case.game.execution_threshold == 3
+
+    # 4 living -> threshold 2
+    test_case.game.set_player_alive_status("Alice", False)
+    assert test_case.game.execution_threshold == 2
+
+    # 3 living -> threshold 2
+    test_case.game.set_player_alive_status("Bob", False)
+    assert test_case.game.execution_threshold == 2
+
+    # 2 living -> threshold 1
+    test_case.game.set_player_alive_status("Charlie", False)
+    assert test_case.game.execution_threshold == 1
+
+
+@pytest.mark.anyio
+async def test_dead_players_with_vote():
+    """Test tracking dead players who still have their vote."""
+    test_case = GameTestCase(roles=["Imp", "Chef", "Monk"])
+    test_case.add_players_with_roles(
+        [("Alice", "Imp"), ("Bob", "Chef"), ("Charlie", "Monk")]
+    )
+
+    # No dead players
+    assert test_case.game.get_dead_players_with_vote() == []
+
+    # Kill Alice - she should have her dead vote
+    test_case.game.set_player_alive_status("Alice", False)
+    assert test_case.game.get_dead_players_with_vote() == ["Alice"]
+
+    # Alice uses her dead vote
+    alice = test_case.game.get_player_by_name("Alice")
+    assert alice is not None
+    alice.set_has_used_dead_vote(True)
+    assert test_case.game.get_dead_players_with_vote() == []
+
+    # Kill Bob - he should have his dead vote
+    test_case.game.set_player_alive_status("Bob", False)
+    assert test_case.game.get_dead_players_with_vote() == ["Bob"]
+
+
+@pytest.mark.anyio
 async def test_night_phase_defaults():
     """Test that night phase fields have correct default values."""
     game = Game(script_name=ScriptName.TROUBLE_BREWING)

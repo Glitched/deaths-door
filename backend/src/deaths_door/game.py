@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import secrets
 from typing import Generator
 
@@ -214,6 +215,24 @@ class Game:
         # Sort by character name so list order is consistent
         all_status_effects.sort(key=lambda effect: effect.character_name)
         return all_status_effects
+
+    @property
+    def living_player_count(self) -> int:
+        """Get the number of living players."""
+        return sum(1 for player in self.players if player.is_alive)
+
+    @property
+    def execution_threshold(self) -> int:
+        """Get the number of votes needed to execute (≥50% of living players)."""
+        return math.ceil(self.living_player_count / 2)
+
+    def get_dead_players_with_vote(self) -> list[str]:
+        """Get names of dead players who haven't used their dead vote."""
+        return [
+            player.name
+            for player in self.players
+            if not player.is_alive and not player.has_used_dead_vote
+        ]
 
     def get_unclaimed_travelers(self) -> list[Character]:
         """Get the unclaimed travelers."""
