@@ -8,7 +8,16 @@ from uuid import UUID, uuid4
 
 from .apply import apply, replay
 from .event_store import EventStore
-from .events import EventPayload, GameCreated, GameEvent
+from .events import (
+    DeadVoteUsedSet,
+    EventPayload,
+    GameCreated,
+    GameEvent,
+    PlayerAdded,
+    PlayerAliveSet,
+    RolesIncluded,
+    StatusEffectAdded,
+)
 from .game_state import GameState
 
 
@@ -61,8 +70,45 @@ class GameManager:
             if game_ids:
                 await self.load_game(game_ids[-1])
             else:
-                await self.create_game("trouble_brewing")
+                await self._create_sample_game()
         return self.state
+
+    async def _create_sample_game(self) -> None:
+        """Create a sample game for development/testing."""
+        await self.create_game("trouble_brewing")
+
+        roles = [
+            "Imp", "Baron", "Poisoner", "Scarlet Woman",  # evil
+            "Recluse", "Librarian", "Empath", "Investigator",  # good
+            "Mayor", "Fortune Teller", "Slayer", "Monk", "Virgin",  # good
+        ]
+        await self.dispatch(RolesIncluded(names=tuple(roles)))
+
+        # Named players with specific roles
+        players = [
+            ("Ryan", "Baron", "evil"),
+            ("Yash", "Virgin", "good"),
+            ("Other Ryan", "Imp", "evil"),
+            ("Other Yash", "Poisoner", "evil"),
+            ("Yet Another Ryan", "Scarlet Woman", "evil"),
+            ("Yet Another Yash", "Recluse", "good"),
+            ("Even More Ryan", "Librarian", "good"),
+            ("Even More Yash", "Empath", "good"),
+            ("Even Even More Ryan", "Mayor", "good"),
+            ("Even Even More Yash", "Fortune Teller", "good"),
+            ("Claude", "Monk", "good"),
+        ]
+        for name, role, alignment in players:
+            await self.dispatch(PlayerAdded(player_name=name, character_name=role, alignment=alignment))
+
+        # Status effects
+        await self.dispatch(StatusEffectAdded(player_name="Yash", effect="Drunk"))
+        await self.dispatch(StatusEffectAdded(player_name="Yash", effect="No Ability"))
+        await self.dispatch(StatusEffectAdded(player_name="Ryan", effect="Is The Demon"))
+
+        # Yash is dead and has used their vote
+        await self.dispatch(PlayerAliveSet(player_name="Yash", is_alive=False))
+        await self.dispatch(DeadVoteUsedSet(player_name="Yash", has_used_dead_vote=True))
 
     async def create_game(self, script_name: str) -> GameState:
         """Create a new game with a fresh game_id."""
