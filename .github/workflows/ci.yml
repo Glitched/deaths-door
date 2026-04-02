@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
+
+      - name: Lint
+        run: uv run ruff check src/
+
+      - name: Format check
+        run: uv run ruff format --check src/
+
+      - name: Type check
+        run: uv run pyright src/
+
+      - name: Test
+        run: uv run pytest
