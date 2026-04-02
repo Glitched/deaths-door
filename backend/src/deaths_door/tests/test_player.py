@@ -1,198 +1,154 @@
+"""Tests for PlayerState and player_state_to_out conversion."""
+
 import pytest
+from pydantic import ValidationError
 
 from deaths_door.alignment import Alignment
-from deaths_door.characters.trouble_brewing.chef import Chef
-from deaths_door.characters.trouble_brewing.imp import Imp
-from deaths_door.player import Player
+from deaths_door.game_state import PlayerState, player_state_to_out
+from deaths_door.scripts.registry import get_script_by_name
 
 
 @pytest.mark.anyio
-async def test_player_creation():
-    """Test basic player creation with character assignment."""
-    imp_character = Imp()
-    player = Player("Alice", imp_character)
+async def test_player_state_defaults():
+    """Test PlayerState default values."""
+    player = PlayerState(name="Alice", character_name="Imp", alignment="evil")
 
     assert player.name == "Alice"
-    assert player.character.name == "Imp"
-    assert player.alignment == Alignment.EVIL  # Inherited from Imp
+    assert player.character_name == "Imp"
+    assert player.alignment == "evil"
     assert player.is_alive is True
     assert player.has_used_dead_vote is False
-    assert player.status_effects == []
+    assert player.status_effects == ()
 
 
 @pytest.mark.anyio
-async def test_player_alignment_inheritance():
-    """Test that players inherit alignment from their characters."""
-    # Evil character
-    imp = Imp()
-    evil_player = Player("EvilPlayer", imp)
-    assert evil_player.alignment == Alignment.EVIL
+async def test_player_state_with_all_fields():
+    """Test PlayerState with all fields specified."""
+    player = PlayerState(
+        name="Bob",
+        character_name="Chef",
+        alignment="good",
+        is_alive=False,
+        has_used_dead_vote=True,
+        status_effects=("Poisoned", "Safe"),
+    )
 
-    # Good character
-    chef = Chef()
-    good_player = Player("GoodPlayer", chef)
-    assert good_player.alignment == Alignment.GOOD
-
-
-@pytest.mark.anyio
-async def test_player_death_and_resurrection():
-    """Test player death/resurrection mechanics."""
-    player = Player("Bob", Imp())
-
-    # Player starts alive
-    assert player.is_alive is True
-
-    # Kill player
-    player.is_alive = False
     assert player.is_alive is False
-
-    # Resurrect player
-    player.is_alive = True
-    assert player.is_alive is True
-
-
-@pytest.mark.anyio
-async def test_dead_vote_usage():
-    """Test dead vote tracking."""
-    player = Player("Charlie", Chef())
-
-    # Initially hasn't used dead vote
-    assert player.has_used_dead_vote is False
-
-    # Use dead vote
-    player.has_used_dead_vote = True
     assert player.has_used_dead_vote is True
-
-
-@pytest.mark.anyio
-async def test_player_name_update():
-    """Test updating player name."""
-    player = Player("OldName", Chef())
-    original_character = player.character
-
-    player.set_name("NewName")
-
-    assert player.name == "NewName"
-    assert player.character is original_character  # Character unchanged
-
-
-@pytest.mark.anyio
-async def test_player_status_effects():
-    """Test player status effect management."""
-    player = Player("Alice", Chef())
-
-    # Initially no status effects
-    assert len(player.status_effects) == 0
-
-    # Add status effect
-    player.add_status_effect("Poisoned")
     assert "Poisoned" in player.status_effects
-    assert len(player.status_effects) == 1
-
-    # Add duplicate - should still only have one
-    player.add_status_effect("Poisoned")
-    assert len(player.status_effects) == 1
-
-    # Add different status effect
-    player.add_status_effect("Safe")
     assert "Safe" in player.status_effects
-    assert len(player.status_effects) == 2
-
-    # Remove status effect
-    player.remove_status_effect("Poisoned")
-    assert "Poisoned" not in player.status_effects
-    assert "Safe" in player.status_effects
-    assert len(player.status_effects) == 1
 
 
 @pytest.mark.anyio
-async def test_remove_nonexistent_status_effect():
-    """Test that removing non-existent status effect raises appropriate error."""
-    player = Player("Alice", Chef())
+async def test_player_state_is_frozen():
+    """Test that PlayerState is immutable."""
+    player = PlayerState(name="Alice", character_name="Imp", alignment="evil")
 
-    # Try to remove non-existent status effect - should not raise error (safe removal)
-    player.remove_status_effect("NonExistentEffect")  # Should not raise
-
-
-@pytest.mark.anyio
-async def test_player_character_swap():
-    """Test swapping a player's character."""
-    player = Player("Alice", Chef())
-    original_alignment = player.alignment
-
-    # Swap to different character
-    new_character = Imp()
-    player.set_character(new_character)
-    player.set_alignment(new_character.alignment)  # Manually update alignment
-
-    assert player.character.name == "Imp"
-    assert player.alignment != original_alignment  # Should change with character
-    assert player.alignment == Alignment.EVIL
-    assert player.name == "Alice"  # Name stays the same
+    with pytest.raises(ValidationError):
+        player.name = "Bob"  # type: ignore[reportAttributeAccessIssue]
 
 
 @pytest.mark.anyio
-async def test_player_serialization():
-    """Test converting player to output format."""
-    player = Player("TestPlayer", Chef())
-    player.add_status_effect("Poisoned")
-    player.is_alive = False
+async def test_player_state_model_copy():
+    """Test updating PlayerState via model_copy."""
+    player = PlayerState(name="Alice", character_name="Imp", alignment="evil")
 
-    player_out = player.to_out()
+    dead = player.model_copy(update={"is_alive": False})
+    assert dead.is_alive is False
+    assert player.is_alive is True  # Original unchanged
 
-    assert player_out.name == "TestPlayer"
-    assert player_out.character.name == "Chef"
-    assert player_out.alignment == Alignment.GOOD
-    assert player_out.is_alive is False
-    assert player_out.has_used_dead_vote is False
-    assert "Poisoned" in player_out.status_effects
+    renamed = player.model_copy(update={"name": "Alicia"})
+    assert renamed.name == "Alicia"
+    assert player.name == "Alice"
 
 
 @pytest.mark.anyio
-async def test_player_string_representation():
-    """Test player string representations."""
-    alive_player = Player("Alice", Chef())
-    dead_player = Player("Bob", Imp())
-    dead_player.is_alive = False
+async def test_player_state_status_effects_immutable():
+    """Test status effect operations via tuple replacement."""
+    player = PlayerState(name="Alice", character_name="Chef", alignment="good")
 
-    # Test __str__ method
-    assert "Alice as Chef (alive)" in str(alive_player)
-    assert "Bob as Imp (dead)" in str(dead_player)
+    # Add effect
+    with_effect = player.model_copy(update={"status_effects": player.status_effects + ("Poisoned",)})
+    assert "Poisoned" in with_effect.status_effects
+    assert player.status_effects == ()  # Original unchanged
 
-    # Test __repr__ method
-    alive_repr = repr(alive_player)
-    assert "Player(name='Alice'" in alive_repr
-    assert "character='Chef'" in alive_repr
-    assert "is_alive=True" in alive_repr
+    # Add duplicate — tuples allow it, apply() prevents it
+    with_dup = with_effect.model_copy(update={"status_effects": with_effect.status_effects + ("Poisoned",)})
+    assert with_dup.status_effects == ("Poisoned", "Poisoned")
 
-    dead_repr = repr(dead_player)
-    assert "is_alive=False" in dead_repr
+    # Remove effect
+    without = with_effect.model_copy(
+        update={"status_effects": tuple(e for e in with_effect.status_effects if e != "Poisoned")}
+    )
+    assert without.status_effects == ()
 
 
 @pytest.mark.anyio
-async def test_player_game_integration_scenarios():
-    """Test realistic game scenarios with players."""
-    # Scenario: Drunk thinks they're the Chef but is actually the Drunk
-    drunk_player = Player("DrunkPlayer", Chef())  # Thinks they're Chef
-    drunk_player.alignment = Alignment.GOOD  # But actually good (Drunk is Outsider)
+async def test_player_state_to_out():
+    """Test converting PlayerState to API output format."""
+    player = PlayerState(
+        name="TestPlayer",
+        character_name="Chef",
+        alignment="good",
+        is_alive=False,
+        status_effects=("Poisoned",),
+    )
+    script = get_script_by_name("trouble_brewing")
+    assert script is not None
 
-    # The Drunk's apparent character doesn't match their true alignment in this case
-    # This is a legitimate game mechanic
-    assert drunk_player.character.name == "Chef"
-    assert drunk_player.alignment == Alignment.GOOD
+    out = player_state_to_out(player, script)
 
-    # Scenario: Player dies and uses their dead vote
-    dead_player = Player("DeadPlayer", Chef())
-    dead_player.is_alive = False
-    dead_player.has_used_dead_vote = True
+    assert out.name == "TestPlayer"
+    assert out.character.name == "Chef"
+    assert out.alignment == Alignment.GOOD
+    assert out.is_alive is False
+    assert out.has_used_dead_vote is False
+    assert "Poisoned" in out.status_effects
 
-    assert dead_player.is_alive is False
-    assert dead_player.has_used_dead_vote is True
 
-    # Scenario: Evil player with multiple status effects
-    evil_player = Player("EvilPlayer", Imp())
-    evil_player.add_status_effect("Poisoned")
-    evil_player.add_status_effect("Safe")  # Contradictory but possible
+@pytest.mark.anyio
+async def test_player_state_to_out_traveler():
+    """Test converting a traveler PlayerState to API output."""
+    player = PlayerState(name="Traveler", character_name="Beggar", alignment="unknown")
+    script = get_script_by_name("trouble_brewing")
+    assert script is not None
 
-    assert len(evil_player.status_effects) == 2
-    assert evil_player.alignment == Alignment.EVIL
+    out = player_state_to_out(player, script)
+    assert out.character.name == "Beggar"
+    assert out.alignment == Alignment.UNKNOWN
+
+
+@pytest.mark.anyio
+async def test_player_state_to_out_unknown_character():
+    """Test that converting with unknown character raises ValueError."""
+    player = PlayerState(name="Alice", character_name="FakeCharacter", alignment="good")
+    script = get_script_by_name("trouble_brewing")
+    assert script is not None
+
+    with pytest.raises(ValueError, match="Character not found: FakeCharacter"):
+        player_state_to_out(player, script)
+
+
+@pytest.mark.anyio
+async def test_player_state_game_scenarios():
+    """Test realistic game scenarios with PlayerState."""
+    # Dead player with used vote
+    dead = PlayerState(
+        name="DeadPlayer",
+        character_name="Chef",
+        alignment="good",
+        is_alive=False,
+        has_used_dead_vote=True,
+    )
+    assert dead.is_alive is False
+    assert dead.has_used_dead_vote is True
+
+    # Evil player with multiple effects
+    evil = PlayerState(
+        name="EvilPlayer",
+        character_name="Imp",
+        alignment="evil",
+        status_effects=("Poisoned", "Safe"),
+    )
+    assert len(evil.status_effects) == 2
+    assert evil.alignment == "evil"

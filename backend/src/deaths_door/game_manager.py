@@ -54,7 +54,14 @@ class GameManager:
             return new_state
 
     async def get_state(self) -> GameState:
-        """Get the current game state (no lock needed — single reference read)."""
+        """Get the current game state, auto-creating if none exists."""
+        if self._state is None:
+            # Try loading the most recent game from the store
+            game_ids = self._store.get_all_game_ids()
+            if game_ids:
+                await self.load_game(game_ids[-1])
+            else:
+                await self.create_game("trouble_brewing")
         return self.state
 
     async def create_game(self, script_name: str) -> GameState:
