@@ -1,4 +1,5 @@
-"""APNS manager for sending Live Activity push updates.
+"""
+APNS manager for sending Live Activity push updates.
 
 Gracefully degrades when APNS key is not configured — the iOS app
 falls back to its local countdown timer in that case.
@@ -151,14 +152,9 @@ class APNSManager:
                     elif response.status_code == 410:
                         # Token is no longer valid
                         stale_tokens.add(push_token)
-                        logger.info(
-                            f"APNS token expired, removing: {push_token[:8]}..."
-                        )
+                        logger.info(f"APNS token expired, removing: {push_token[:8]}...")
                     else:
-                        logger.warning(
-                            f"APNS push failed ({response.status_code}): "
-                            f"{response.text}"
-                        )
+                        logger.warning(f"APNS push failed ({response.status_code}): {response.text}")
                 except httpx.HTTPError as e:
                     logger.warning(f"APNS request failed: {e}")
 

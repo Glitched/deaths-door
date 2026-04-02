@@ -1,37 +1,57 @@
 """Test helper utilities for Deaths Door tests."""
 
+from datetime import datetime, timezone
+from uuid import uuid4
+
 from httpx import ASGITransport, AsyncClient
 
-from deaths_door.game import Game
+from deaths_door.apply import apply
+from deaths_door.events import GameCreated, GameEvent, PlayerAdded, RolesIncluded
+from deaths_door.game_state import GameState, PlayerState
 from deaths_door.main import app
-from deaths_door.player import Player, PlayerOut
-from deaths_door.script import ScriptName
+from deaths_door.player import PlayerOut
+from deaths_door.script_name import ScriptName
+from deaths_door.scripts.registry import get_script_by_name
 
 
-def create_test_game_with_roles(
-    script_name: ScriptName = ScriptName.TROUBLE_BREWING, roles: list[str] | None = None
-) -> Game:
+def _make_event(state: GameState, payload: object) -> GameEvent:
+    """Create a GameEvent from a state and payload."""
+    return GameEvent(
+        game_id=state.game_id,
+        sequence=state.version,
+        timestamp=datetime.now(timezone.utc),
+        payload=payload,  # type: ignore[reportArgumentType]
+    )
+
+
+def create_test_game_state(
+    script_name: ScriptName = ScriptName.TROUBLE_BREWING,
+    roles: list[str] | None = None,
+) -> GameState:
     """
-    Create a test game with specified roles included.
+    Create a test GameState with specified roles included.
 
     Args:
         script_name: The script to use for the game
         roles: List of role names to include. If None, uses a default set.
 
     Returns:
-        Game instance ready for adding players
+        Frozen GameState with roles included, ready for adding players.
 
     """
     if roles is None:
         roles = ["Imp", "Chef", "Butler", "Baron", "Librarian", "Empath", "Mayor"]
 
-    game = Game(script_name=script_name)
-    game.included_roles = game.script.characters.copy()
+    game_id = uuid4()
+    state = GameState(game_id=game_id, script_name="")
 
-    # Only include the specified roles
-    game.included_roles = [char for char in game.script.characters if char.name in roles]
+    # Apply game creation
+    state = apply(state, _make_event(state, GameCreated(script_name=script_name.value)))
 
-    return game
+    # Add roles
+    state = apply(state, _make_event(state, RolesIncluded(names=tuple(roles))))
+
+    return state
 
 
 def get_test_client() -> AsyncClient:
@@ -107,7 +127,7 @@ async def enable_role_reveal(client: AsyncClient) -> None:
 
 
 class GameTestCase:
-    """Base class for game test scenarios with common setup."""
+    """Base class for game test scenarios using immutable GameState."""
 
     def __init__(
         self,
@@ -116,9 +136,9 @@ class GameTestCase:
     ):
         """Create a test game with the given script and roles."""
         self.script_name = script_name
-        self.game = create_test_game_with_roles(script_name, roles)
+        self.state = create_test_game_state(script_name, roles)
 
-    def add_players_with_roles(self, player_role_pairs: list[tuple[str, str]]) -> list[Player]:
+    def add_players_with_roles(self, player_role_pairs: list[tuple[str, str]]) -> list[PlayerState]:
         """
         Add players with specific roles to the test game.
 
@@ -126,36 +146,38 @@ class GameTestCase:
             player_role_pairs: List of (player_name, role_name) tuples
 
         Returns:
-            List of Player objects that were added
+            List of PlayerState objects from the final state
 
         """
-        players: list[Player] = []
+        script = get_script_by_name(self.state.script_name)
+        if script is None:
+            raise ValueError(f"Script not found: {self.state.script_name}")
+
+        players: list[PlayerState] = []
         for player_name, role_name in player_role_pairs:
-            player = self.game.add_player_with_role(player_name, role_name)
+            character = script.get_character(role_name)
+            if character is None:
+                raise ValueError(f"Character not found: {role_name}")
+            event = _make_event(
+                self.state,
+                PlayerAdded(
+                    player_name=player_name,
+                    character_name=character.name,
+                    alignment=character.alignment.value,
+                ),
+            )
+            self.state = apply(self.state, event)
+            player = self.state.get_player(player_name)
+            if player is None:
+                raise ValueError(f"Player not found after adding: {player_name}")
             players.append(player)
         return players
 
-    def add_random_players(self, player_names: list[str]) -> list[Player]:
-        """
-        Add players with random roles to the test game.
 
-        Args:
-            player_names: List of player names to add
-
-        Returns:
-            List of Player objects that were added
-
-        """
-        players: list[Player] = []
-        for name in player_names:
-            player = self.game.add_player_with_random_role(name)
-            players.append(player)
-        return players
-
-
-def create_empty_game(script_name: ScriptName = ScriptName.TROUBLE_BREWING) -> Game:
-    """Create a game with no roles included (for testing edge cases)."""
-    return Game(script_name=script_name)
+def create_empty_game_state(script_name: ScriptName = ScriptName.TROUBLE_BREWING) -> GameState:
+    """Create a game state with no roles included (for testing edge cases)."""
+    state = GameState(game_id=uuid4(), script_name="")
+    return apply(state, _make_event(state, GameCreated(script_name=script_name.value)))
 
 
 # Common test data sets

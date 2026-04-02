@@ -1,162 +1,146 @@
 """Tests for status effect removal when characters die."""
 
+from datetime import datetime, timezone
+
 import pytest
 
-from deaths_door.game import Game
-from deaths_door.script import ScriptName
+from deaths_door.apply import apply
+from deaths_door.events import GameEvent, PlayerAliveSet, StatusEffectAdded
+from deaths_door.game_state import GameState
+from deaths_door.routes.players import compute_death_cleared_effects
+
+from .helpers import GameTestCase
+
+
+def _evt(state: GameState, payload: object) -> GameEvent:
+    """Shorthand to create a test event."""
+    return GameEvent(
+        game_id=state.game_id,
+        sequence=state.version,
+        timestamp=datetime.now(timezone.utc),
+        payload=payload,  # type: ignore[reportArgumentType]
+    )
+
+
+def _add_effect(state: GameState, player_name: str, effect: str) -> GameState:
+    """Add a status effect to a player."""
+    return apply(state, _evt(state, StatusEffectAdded(player_name=player_name, effect=effect)))
+
+
+def _kill_with_cleanup(state: GameState, player_name: str) -> GameState:
+    """Kill a player with cascading status effect cleanup."""
+    cleared = compute_death_cleared_effects(state, player_name)
+    return apply(state, _evt(state, PlayerAliveSet(player_name=player_name, is_alive=False, cleared_effects=cleared)))
 
 
 @pytest.mark.anyio
 async def test_poisoner_death_removes_poisoned_status():
     """Test that when Poisoner dies, Poisoned status is removed from all players."""
-    # Create game with Poisoner and other roles
-    game = Game(ScriptName.TROUBLE_BREWING)
-    game.include_role("Poisoner")
-    game.include_role("Chef")
-    game.include_role("Empath")
+    tc = GameTestCase(roles=["Poisoner", "Chef", "Empath"])
+    tc.add_players_with_roles([("Alice", "Poisoner"), ("Bob", "Chef"), ("Charlie", "Empath")])
 
-    # Add players
-    _poisoner_player = game.add_player_with_role("Alice", "Poisoner")
-    chef_player = game.add_player_with_role("Bob", "Chef")
-    empath_player = game.add_player_with_role("Charlie", "Empath")
+    tc.state = _add_effect(tc.state, "Bob", "Poisoned")
+    tc.state = _add_effect(tc.state, "Charlie", "Poisoned")
 
-    # Poisoner poisons both other players
-    chef_player.add_status_effect("Poisoned")
-    empath_player.add_status_effect("Poisoned")
-
-    # Verify they're poisoned
-    assert "Poisoned" in chef_player.status_effects
-    assert "Poisoned" in empath_player.status_effects
+    bob = tc.state.get_player("Bob")
+    charlie = tc.state.get_player("Charlie")
+    assert bob is not None and "Poisoned" in bob.status_effects
+    assert charlie is not None and "Poisoned" in charlie.status_effects
 
     # Poisoner dies
-    game.set_player_alive_status("Alice", False)
+    tc.state = _kill_with_cleanup(tc.state, "Alice")
 
-    # Verify Poisoned status was removed from all players
-    assert "Poisoned" not in chef_player.status_effects
-    assert "Poisoned" not in empath_player.status_effects
+    bob = tc.state.get_player("Bob")
+    charlie = tc.state.get_player("Charlie")
+    assert bob is not None and "Poisoned" not in bob.status_effects
+    assert charlie is not None and "Poisoned" not in charlie.status_effects
 
 
 @pytest.mark.anyio
 async def test_monk_death_removes_safe_status():
     """Test that when Monk dies, Safe status is removed from all players."""
-    game = Game(ScriptName.TROUBLE_BREWING)
-    game.include_role("Monk")
-    game.include_role("Chef")
-    game.include_role("Empath")
+    tc = GameTestCase(roles=["Monk", "Chef", "Empath"])
+    tc.add_players_with_roles([("Alice", "Monk"), ("Bob", "Chef"), ("Charlie", "Empath")])
 
-    _monk_player = game.add_player_with_role("Alice", "Monk")
-    chef_player = game.add_player_with_role("Bob", "Chef")
-    empath_player = game.add_player_with_role("Charlie", "Empath")
+    tc.state = _add_effect(tc.state, "Bob", "Safe")
+    tc.state = _add_effect(tc.state, "Charlie", "Safe")
 
-    # Monk protects both other players
-    chef_player.add_status_effect("Safe")
-    empath_player.add_status_effect("Safe")
+    tc.state = _kill_with_cleanup(tc.state, "Alice")
 
-    # Verify they're safe
-    assert "Safe" in chef_player.status_effects
-    assert "Safe" in empath_player.status_effects
-
-    # Monk dies
-    game.set_player_alive_status("Alice", False)
-
-    # Verify Safe status was removed
-    assert "Safe" not in chef_player.status_effects
-    assert "Safe" not in empath_player.status_effects
+    bob = tc.state.get_player("Bob")
+    charlie = tc.state.get_player("Charlie")
+    assert bob is not None and "Safe" not in bob.status_effects
+    assert charlie is not None and "Safe" not in charlie.status_effects
 
 
 @pytest.mark.anyio
 async def test_butler_death_removes_master_status():
     """Test that when Butler dies, Butler's Master status is removed from all players."""
-    game = Game(ScriptName.TROUBLE_BREWING)
-    game.include_role("Butler")
-    game.include_role("Chef")
-    game.include_role("Empath")
+    tc = GameTestCase(roles=["Butler", "Chef", "Empath"])
+    tc.add_players_with_roles([("Alice", "Butler"), ("Bob", "Chef"), ("Charlie", "Empath")])
 
-    _butler_player = game.add_player_with_role("Alice", "Butler")
-    chef_player = game.add_player_with_role("Bob", "Chef")
-    _empath_player = game.add_player_with_role("Charlie", "Empath")
+    tc.state = _add_effect(tc.state, "Bob", "Butler's Master")
 
-    # Mark Chef as Butler's Master
-    chef_player.add_status_effect("Butler's Master")
+    tc.state = _kill_with_cleanup(tc.state, "Alice")
 
-    # Verify status exists
-    assert "Butler's Master" in chef_player.status_effects
-
-    # Butler dies
-    game.set_player_alive_status("Alice", False)
-
-    # Verify Butler's Master status was removed
-    assert "Butler's Master" not in chef_player.status_effects
+    bob = tc.state.get_player("Bob")
+    assert bob is not None and "Butler's Master" not in bob.status_effects
 
 
 @pytest.mark.anyio
 async def test_non_persistent_character_death_leaves_other_effects():
     """Test that when a non-persistent character dies, other status effects remain."""
-    game = Game(ScriptName.TROUBLE_BREWING)
-    game.include_role("Imp")
-    game.include_role("Chef")
-    game.include_role("Empath")
+    tc = GameTestCase(roles=["Imp", "Chef", "Empath"])
+    tc.add_players_with_roles([("Alice", "Imp"), ("Bob", "Chef"), ("Charlie", "Empath")])
 
-    _imp_player = game.add_player_with_role("Alice", "Imp")
-    chef_player = game.add_player_with_role("Bob", "Chef")
-    empath_player = game.add_player_with_role("Charlie", "Empath")
+    tc.state = _add_effect(tc.state, "Bob", "Poisoned")
+    tc.state = _add_effect(tc.state, "Charlie", "Safe")
 
-    # Add some status effects that shouldn't be removed
-    chef_player.add_status_effect("Poisoned")
-    empath_player.add_status_effect("Safe")
+    # Imp dies — has no persistent effects to clear
+    tc.state = _kill_with_cleanup(tc.state, "Alice")
 
-    # Imp dies (Imp doesn't have persistent status effects on others)
-    game.set_player_alive_status("Alice", False)
-
-    # Verify status effects remain
-    assert "Poisoned" in chef_player.status_effects
-    assert "Safe" in empath_player.status_effects
+    bob = tc.state.get_player("Bob")
+    charlie = tc.state.get_player("Charlie")
+    assert bob is not None and "Poisoned" in bob.status_effects
+    assert charlie is not None and "Safe" in charlie.status_effects
 
 
 @pytest.mark.anyio
 async def test_resurrection_does_not_trigger_cleanup():
     """Test that resurrecting a player doesn't trigger status effect cleanup."""
-    game = Game(ScriptName.TROUBLE_BREWING)
-    game.include_role("Poisoner")
-    game.include_role("Chef")
+    tc = GameTestCase(roles=["Poisoner", "Chef"])
+    tc.add_players_with_roles([("Alice", "Poisoner"), ("Bob", "Chef")])
 
-    _poisoner_player = game.add_player_with_role("Alice", "Poisoner")
-    chef_player = game.add_player_with_role("Bob", "Chef")
+    tc.state = _add_effect(tc.state, "Bob", "Poisoned")
 
-    # Add poisoned status
-    chef_player.add_status_effect("Poisoned")
+    # Kill Poisoner — Poisoned removed
+    tc.state = _kill_with_cleanup(tc.state, "Alice")
+    bob = tc.state.get_player("Bob")
+    assert bob is not None and "Poisoned" not in bob.status_effects
 
-    # Kill and resurrect Poisoner
-    game.set_player_alive_status("Alice", False)
-    assert "Poisoned" not in chef_player.status_effects  # Removed on death
+    # Re-poison and resurrect — effect should stay
+    tc.state = _add_effect(tc.state, "Bob", "Poisoned")
+    tc.state = apply(tc.state, _evt(tc.state, PlayerAliveSet(player_name="Alice", is_alive=True)))
 
-    # Resurrect Poisoner
-    chef_player.add_status_effect("Poisoned")  # Re-poison after resurrection
-    game.set_player_alive_status("Alice", True)
-
-    # Status should still be there (resurrection doesn't trigger cleanup)
-    assert "Poisoned" in chef_player.status_effects
+    bob = tc.state.get_player("Bob")
+    assert bob is not None and "Poisoned" in bob.status_effects
 
 
 @pytest.mark.anyio
 async def test_multiple_status_effects_partial_removal():
     """Test that death only removes relevant status effects, keeping others."""
-    game = Game(ScriptName.TROUBLE_BREWING)
-    game.include_role("Poisoner")
-    game.include_role("Chef")
+    tc = GameTestCase(roles=["Poisoner", "Chef"])
+    tc.add_players_with_roles([("Alice", "Poisoner"), ("Bob", "Chef")])
 
-    _poisoner_player = game.add_player_with_role("Alice", "Poisoner")
-    chef_player = game.add_player_with_role("Bob", "Chef")
+    tc.state = _add_effect(tc.state, "Bob", "Poisoned")
+    tc.state = _add_effect(tc.state, "Bob", "Safe")
+    tc.state = _add_effect(tc.state, "Bob", "Dead")
 
-    # Add multiple status effects
-    chef_player.add_status_effect("Poisoned")
-    chef_player.add_status_effect("Safe")
-    chef_player.add_status_effect("Dead")
+    # Poisoner dies — only Poisoned removed
+    tc.state = _kill_with_cleanup(tc.state, "Alice")
 
-    # Poisoner dies
-    game.set_player_alive_status("Alice", False)
-
-    # Only Poisoned should be removed
-    assert "Poisoned" not in chef_player.status_effects
-    assert "Safe" in chef_player.status_effects
-    assert "Dead" in chef_player.status_effects
+    bob = tc.state.get_player("Bob")
+    assert bob is not None
+    assert "Poisoned" not in bob.status_effects
+    assert "Safe" in bob.status_effects
+    assert "Dead" in bob.status_effects

@@ -1,15 +1,18 @@
-from contextlib import AbstractAsyncContextManager
+"""Routes for game management, night phases, and consolidated state."""
 
-from fastapi import APIRouter, Depends
+from uuid import UUID
+
+from fastapi import APIRouter
 from fastapi.exceptions import HTTPException
 from pydantic import BaseModel, Field
 
 from ..character import CharacterOut
-from ..game import Game
-from ..game_manager import get_current_game, replace_game
+from ..events import EventType, FirstNightSet, NightStepSet
+from ..game_manager import game_manager
+from ..game_state import game_state_to_included_role_outs, player_state_to_out
 from ..night_step import NightStep
 from ..player import PlayerOut
-from ..script import ScriptName
+from ..script_name import ScriptName
 from ..status_effects import StatusEffectOut
 from . import timer as timer_routes
 
@@ -44,58 +47,52 @@ async def new_game(req: NewGameRequest) -> NewGameResponse:
     if script_name is None:
         raise HTTPException(status_code=404, detail="Script not found")
 
-    await replace_game(Game(script_name))
+    await game_manager.create_game(script_name.value)
     return NewGameResponse(status="success", script_name=script_name.value)
 
 
 @router.get("/script/name")
-async def get_game_script(
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> str:
+async def get_game_script() -> str:
     """Return the name of the script for the current game."""
-    async with game_ctx as game:
-        return game.script.name.value
+    state = await game_manager.get_state()
+    return state.script_name
 
 
 @router.get("/script/roles")
-async def get_game_script_roles(
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> list[CharacterOut]:
+async def get_game_script_roles() -> list[CharacterOut]:
     """
     Return all possible character roles available in the current script.
 
     This returns the complete set of roles defined by the script (e.g., all Trouble Brewing roles).
     To see which roles have been added to the current game, use GET /characters/list instead.
     """
-    async with game_ctx as game:
-        return [c.to_out() for c in game.script.characters]
+    state = await game_manager.get_state()
+    script = state.get_script()
+    return [c.to_out() for c in script.characters]
 
 
 @router.get("/script/night/first")
-async def get_game_first_night_steps(
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> list[NightStep]:
+async def get_game_first_night_steps() -> list[NightStep]:
     """Return the first night steps."""
-    async with game_ctx as game:
-        return list(game.get_first_night_steps())
+    state = await game_manager.get_state()
+    # Temporarily set first night to get those steps
+    first_night_state = state.model_copy(update={"is_first_night": True})
+    return first_night_state.get_night_steps()
 
 
 @router.get("/script/night/other")
-async def get_game_other_night_steps(
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> list[NightStep]:
+async def get_game_other_night_steps() -> list[NightStep]:
     """Return the other night steps (subsequent nights)."""
-    async with game_ctx as game:
-        return list(game.get_other_night_steps())
+    state = await game_manager.get_state()
+    other_night_state = state.model_copy(update={"is_first_night": False})
+    return other_night_state.get_night_steps()
 
 
 @router.get("/status_effects")
-async def get_game_status_effects(
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> list[StatusEffectOut]:
+async def get_game_status_effects() -> list[StatusEffectOut]:
     """Return the status effects for the current game."""
-    async with game_ctx as game:
-        return game.get_status_effects()
+    state = await game_manager.get_state()
+    return state.get_status_effects()
 
 
 class GameStateResponse(BaseModel):
@@ -154,44 +151,27 @@ class GameStateResponse(BaseModel):
 
 
 @router.get("/state")
-async def get_game_state(
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> GameStateResponse:
+async def get_game_state() -> GameStateResponse:
     """Get the complete game state in a single request."""
-    # Capture game state while holding the lock
-    async with game_ctx as game:
-        if game.is_first_night:
-            night_steps = list(game.get_first_night_steps())
-        else:
-            night_steps = list(game.get_other_night_steps())
+    state = await game_manager.get_state()
+    script = state.get_script()
 
-        script_name = game.script.name.value
-        players = [player.to_out() for player in game.players]
-        current_night_step = game.current_night_step
-        is_first_night = game.is_first_night
-        should_reveal_roles = game.should_reveal_roles
-        status_effects = game.get_status_effects()
-        included_roles = [role.to_out() for role in game.included_roles]
-        living_player_count = game.living_player_count
-        execution_threshold = game.execution_threshold
-        dead_players_with_vote = game.get_dead_players_with_vote()
-
-    # Get timer state AFTER releasing game lock to avoid lock ordering issues
+    # Get timer state
     timer_is_running = await timer_routes.state.get_is_running()
     timer_seconds = await timer_routes.state.get_seconds()
 
     return GameStateResponse(
-        script_name=script_name,
-        players=players,
-        current_night_step=current_night_step,
-        is_first_night=is_first_night,
-        should_reveal_roles=should_reveal_roles,
-        status_effects=status_effects,
-        included_roles=included_roles,
-        night_steps=night_steps,
-        living_player_count=living_player_count,
-        execution_threshold=execution_threshold,
-        dead_players_with_vote=dead_players_with_vote,
+        script_name=state.script_name,
+        players=[player_state_to_out(p, script) for p in state.players],
+        current_night_step=state.current_night_step,
+        is_first_night=state.is_first_night,
+        should_reveal_roles=state.should_reveal_roles,
+        status_effects=state.get_status_effects(),
+        included_roles=game_state_to_included_role_outs(state),
+        night_steps=state.get_night_steps(),
+        living_player_count=state.living_player_count,
+        execution_threshold=state.execution_threshold,
+        dead_players_with_vote=state.get_dead_players_with_vote(),
         timer=timer_routes.TimerStateResponse(
             is_running=timer_is_running,
             seconds=timer_seconds,
@@ -215,15 +195,13 @@ class NightPhaseResponse(BaseModel):
 
 
 @router.get("/night/phase")
-async def get_night_phase(
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> NightPhaseResponse:
+async def get_night_phase() -> NightPhaseResponse:
     """Get the current night phase information."""
-    async with game_ctx as game:
-        return NightPhaseResponse(
-            current_night_step=game.current_night_step,
-            is_first_night=game.is_first_night,
-        )
+    state = await game_manager.get_state()
+    return NightPhaseResponse(
+        current_night_step=state.current_night_step,
+        is_first_night=state.is_first_night,
+    )
 
 
 class SetNightStepRequest(BaseModel):
@@ -237,17 +215,13 @@ class SetNightStepRequest(BaseModel):
 
 
 @router.post("/night/phase/step")
-async def set_night_step(
-    req: SetNightStepRequest,
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> NightPhaseResponse:
+async def set_night_step(req: SetNightStepRequest) -> NightPhaseResponse:
     """Set the current night step."""
-    async with game_ctx as game:
-        game.current_night_step = req.step
-        return NightPhaseResponse(
-            current_night_step=game.current_night_step,
-            is_first_night=game.is_first_night,
-        )
+    new_state = await game_manager.dispatch(NightStepSet(step=req.step))
+    return NightPhaseResponse(
+        current_night_step=new_state.current_night_step,
+        is_first_night=new_state.is_first_night,
+    )
 
 
 class SetFirstNightRequest(BaseModel):
@@ -261,27 +235,133 @@ class SetFirstNightRequest(BaseModel):
 
 
 @router.post("/night/phase/first_night")
-async def set_first_night(
-    req: SetFirstNightRequest,
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> NightPhaseResponse:
+async def set_first_night(req: SetFirstNightRequest) -> NightPhaseResponse:
     """Set whether this is the first night (automatically resets to Dusk)."""
-    async with game_ctx as game:
-        game.is_first_night = req.is_first_night
-        game.current_night_step = "Dusk"
-        return NightPhaseResponse(
-            current_night_step=game.current_night_step,
-            is_first_night=game.is_first_night,
-        )
+    new_state = await game_manager.dispatch(FirstNightSet(is_first_night=req.is_first_night))
+    return NightPhaseResponse(
+        current_night_step=new_state.current_night_step,
+        is_first_night=new_state.is_first_night,
+    )
 
 
 @router.get("/script/night/steps")
-async def get_night_steps(
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> list[NightStep]:
+async def get_night_steps() -> list[NightStep]:
     """Return the night steps for the current night (first or other based on game state)."""
-    async with game_ctx as game:
-        if game.is_first_night:
-            return list(game.get_first_night_steps())
-        else:
-            return list(game.get_other_night_steps())
+    state = await game_manager.get_state()
+    return state.get_night_steps()
+
+
+# --- Event sourcing endpoints ---
+
+
+class EventOut(BaseModel):
+    """A game event for the history endpoint."""
+
+    sequence: int = Field(..., description="Event sequence number (0-indexed)")
+    event_type: EventType = Field(..., description="Type of event")
+    timestamp: str = Field(..., description="ISO 8601 timestamp")
+    payload: dict[str, object] = Field(..., description="Event payload data")
+
+
+class HistoryResponse(BaseModel):
+    """Response containing the event history for the current game."""
+
+    game_id: str = Field(..., description="Current game ID")
+    version: int = Field(..., description="Current version (number of events applied)")
+    events: list[EventOut] = Field(..., description="All events in chronological order")
+
+
+@router.get("/history")
+async def get_game_history() -> HistoryResponse:
+    """Get the full event history for the current game."""
+    state = await game_manager.get_state()
+    events = await game_manager.get_history()
+    return HistoryResponse(
+        game_id=str(state.game_id),
+        version=state.version,
+        events=[
+            EventOut(
+                sequence=e.sequence,
+                event_type=e.payload.type,
+                timestamp=e.timestamp.isoformat(),
+                payload=e.payload.model_dump(exclude={"type"}),
+            )
+            for e in events
+        ],
+    )
+
+
+class RewindRequest(BaseModel):
+    """Request to rewind the game to a specific version."""
+
+    to_version: int = Field(..., description="Version to rewind to (1-based, inclusive)", ge=1)
+
+
+@router.post("/rewind", responses={400: {"description": "Invalid version"}})
+async def rewind_game(req: RewindRequest) -> GameStateResponse:
+    """Rewind the current game to a previous version, deleting subsequent events."""
+    try:
+        await game_manager.rewind(req.to_version)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return await get_game_state()
+
+
+class ForkRequest(BaseModel):
+    """Request to fork the game from a specific version."""
+
+    from_version: int = Field(..., description="Version to fork from (1-based, inclusive)", ge=1)
+
+
+class ForkResponse(BaseModel):
+    """Response after forking a game."""
+
+    new_game_id: str = Field(..., description="ID of the newly forked game")
+    version: int = Field(..., description="Version of the forked game")
+
+
+@router.post("/fork", responses={400: {"description": "Invalid version"}})
+async def fork_game(req: ForkRequest) -> ForkResponse:
+    """Fork the current game from a specific version, creating a new game branch."""
+    try:
+        new_state = await game_manager.fork(req.from_version)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return ForkResponse(new_game_id=str(new_state.game_id), version=new_state.version)
+
+
+class LoadGameRequest(BaseModel):
+    """Request to load a game by ID."""
+
+    game_id: str = Field(..., description="UUID of the game to load")
+
+
+@router.post("/load", responses={400: {"description": "Game not found"}})
+async def load_game(req: LoadGameRequest) -> GameStateResponse:
+    """Load a previously saved game by its ID."""
+    try:
+        game_id = UUID(req.game_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid game ID: {req.game_id}") from e
+
+    try:
+        await game_manager.load_game(game_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return await get_game_state()
+
+
+class GameListResponse(BaseModel):
+    """Response listing all saved games."""
+
+    game_ids: list[str] = Field(..., description="List of all game IDs")
+
+
+@router.get("/list")
+async def list_games() -> GameListResponse:
+    """List all saved game IDs."""
+    ids = await game_manager.list_games()
+    return GameListResponse(game_ids=[str(gid) for gid in ids])

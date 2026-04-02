@@ -115,7 +115,8 @@ async def stop_timer() -> TimerOperationResponse:
 
 @timer.post("/push_token")
 async def register_push_token(request: PushTokenRequest) -> dict[str, str]:
-    """Register a Live Activity push token for timer updates.
+    """
+    Register a Live Activity push token for timer updates.
 
     The iOS app sends its ActivityKit push token here so the server
     can push timer state changes to the Live Activity when the app

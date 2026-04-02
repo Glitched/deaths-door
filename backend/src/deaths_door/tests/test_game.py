@@ -1,25 +1,48 @@
+"""Tests for game state management using immutable GameState."""
+
+from datetime import datetime, timezone
+
 import pytest
 
-from deaths_door.alignment import Alignment
-from deaths_door.game import Game
-from deaths_door.script import ScriptName
+from deaths_door.apply import apply
+from deaths_door.events import (
+    FirstNightSet,
+    GameEvent,
+    NightStepSet,
+    PlayerAliveSet,
+    PlayerRemoved,
+    RoleVisibilitySet,
+    TravelerAdded,
+)
+from deaths_door.game_state import GameState
 
-from .helpers import GameTestCase
+from .helpers import GameTestCase, create_empty_game_state
+
+
+def _evt(state: GameState, payload: object) -> GameEvent:
+    """Shorthand to create a test event."""
+    return GameEvent(
+        game_id=state.game_id,
+        sequence=state.version,
+        timestamp=datetime.now(timezone.utc),
+        payload=payload,  # type: ignore[reportArgumentType]
+    )
 
 
 @pytest.mark.anyio
 async def test_add_player_with_specific_role():
     """Test adding a player with a specific role."""
     test_case = GameTestCase()
+    test_case.add_players_with_roles([("Ryan", "Imp")])
 
-    player = test_case.game.add_player_with_role("Ryan", "Imp")
-
-    assert player.name == "Ryan"
-    assert player.character.name == "Imp"
-    assert player.alignment == Alignment.EVIL
+    player = test_case.state.get_player("Ryan")
+    assert player is not None
+    assert player.character_name == "Imp"
+    assert player.alignment == "evil"
     assert player.is_alive is True
-    assert len(test_case.game.players) == 1
-    assert len(test_case.game.included_roles) < len(test_case.game.script.characters)  # Role was removed
+    assert len(test_case.state.players) == 1
+    # Role was removed from pool
+    assert "Imp" not in test_case.state.included_role_names
 
 
 @pytest.mark.anyio
@@ -27,95 +50,60 @@ async def test_add_player_with_nonexistent_role():
     """Test that adding a player with non-existent role raises error."""
     test_case = GameTestCase()
 
-    with pytest.raises(ValueError, match="Role 'NonExistentRole' not found in included roles"):
-        test_case.game.add_player_with_role("Alice", "NonExistentRole")
-
-
-@pytest.mark.anyio
-async def test_add_player_with_random_role():
-    """Test adding a player with a random role assignment."""
-    test_case = GameTestCase()
-    original_role_count = len(test_case.game.included_roles)
-
-    player = test_case.game.add_player_with_random_role("Bob")
-
-    assert player.name == "Bob"
-    assert player.character.name is not None
-    assert player.is_alive is True
-    assert len(test_case.game.players) == 1
-    assert len(test_case.game.included_roles) == original_role_count - 1
+    with pytest.raises(ValueError, match="Character not found: NonExistentRole"):
+        test_case.add_players_with_roles([("Alice", "NonExistentRole")])
 
 
 @pytest.mark.anyio
 async def test_add_traveler():
     """Test adding a traveler character."""
-    game = Game(script_name=ScriptName.TROUBLE_BREWING)
+    state = create_empty_game_state()
+    state = apply(
+        state,
+        _evt(state, TravelerAdded(player_name="Traveler_Alice", traveler_name="Beggar", alignment="unknown")),
+    )
 
-    # Add a traveler (they don't need to be in included_roles)
-    player = game.add_player_as_traveler("Traveler_Alice", "Beggar")
-
-    assert player.name == "Traveler_Alice"
-    assert player.character.name == "Beggar"
-    assert player.alignment == Alignment.UNKNOWN  # Travelers have unknown alignment
-    assert len(game.players) == 1
-
-
-@pytest.mark.anyio
-async def test_add_nonexistent_traveler():
-    """Test that adding non-existent traveler raises error."""
-    game = Game(script_name=ScriptName.TROUBLE_BREWING)
-
-    with pytest.raises(ValueError, match="Traveler not found or in game: FakeTraveler"):
-        game.add_player_as_traveler("Alice", "FakeTraveler")
-
-
-@pytest.mark.anyio
-async def test_add_duplicate_traveler():
-    """Test that adding the same traveler twice raises error."""
-    game = Game(script_name=ScriptName.TROUBLE_BREWING)
-
-    # First traveler succeeds
-    game.add_player_as_traveler("Alice", "Beggar")
-
-    # Second player with same traveler should fail
-    with pytest.raises(ValueError, match="Traveler not found or in game: Beggar"):
-        game.add_player_as_traveler("Bob", "Beggar")
+    player = state.get_player("Traveler_Alice")
+    assert player is not None
+    assert player.character_name == "Beggar"
+    assert player.alignment == "unknown"
+    assert len(state.players) == 1
 
 
 @pytest.mark.anyio
 async def test_has_living_character_named():
     """Test checking for living characters by name."""
     test_case = GameTestCase()
+    test_case.add_players_with_roles([("Evil_Alice", "Imp")])
 
-    # Add an Imp player
-    imp_player = test_case.game.add_player_with_role("Evil_Alice", "Imp")
-
-    # Should find living Imp
-    assert test_case.game.has_living_character_named("Imp") is True
-    assert test_case.game.has_living_character_named("Chef") is False
+    assert test_case.state.has_living_character_named("Imp") is True
+    assert test_case.state.has_living_character_named("Chef") is False
 
     # Kill the Imp
-    imp_player.is_alive = False
+    test_case.state = apply(
+        test_case.state,
+        _evt(test_case.state, PlayerAliveSet(player_name="Evil_Alice", is_alive=False)),
+    )
 
-    # Should no longer find living Imp
-    assert test_case.game.has_living_character_named("Imp") is False
+    assert test_case.state.has_living_character_named("Imp") is False
 
 
 @pytest.mark.anyio
 async def test_get_unclaimed_travelers():
     """Test getting travelers that haven't been claimed yet."""
-    game = Game(script_name=ScriptName.TROUBLE_BREWING)
-
-    # Initially all travelers are unclaimed
-    all_travelers = game.script.travelers
-    unclaimed = game.get_unclaimed_travelers()
+    state = create_empty_game_state()
+    script = state.get_script()
+    all_travelers = script.travelers
+    unclaimed = state.get_unclaimed_travelers()
     assert len(unclaimed) == len(all_travelers)
 
     # Claim one traveler
-    game.add_player_as_traveler("Alice", "Beggar")
+    state = apply(
+        state,
+        _evt(state, TravelerAdded(player_name="Alice", traveler_name="Beggar", alignment="unknown")),
+    )
 
-    # Should have one less unclaimed traveler
-    unclaimed_after = game.get_unclaimed_travelers()
+    unclaimed_after = state.get_unclaimed_travelers()
     assert len(unclaimed_after) == len(all_travelers) - 1
     assert not any(t.name == "Beggar" for t in unclaimed_after)
 
@@ -124,91 +112,74 @@ async def test_get_unclaimed_travelers():
 async def test_night_steps_filtering():
     """Test that night steps are filtered based on living characters."""
     test_case = GameTestCase()
+    test_case.add_players_with_roles([("Chef_Player", "Chef"), ("Imp_Player", "Imp")])
 
-    # Add some specific characters
-    test_case.game.add_player_with_role("Chef_Player", "Chef")
-    test_case.game.add_player_with_role("Imp_Player", "Imp")
+    # Get first night steps (Chef has first night ability)
+    first_night_state = test_case.state.model_copy(update={"is_first_night": True})
+    first_night_steps = first_night_state.get_night_steps()
+    chef_steps = [s for s in first_night_steps if s.name == "Chef"]
+    assert len(chef_steps) > 0
 
-    first_night_steps = list(test_case.game.get_first_night_steps())
-    other_night_steps = list(test_case.game.get_other_night_steps())
-
-    # Should include steps for living characters
-    chef_steps = [step for step in first_night_steps if step.name == "Chef"]
-    imp_steps = [step for step in other_night_steps if step.name == "Imp"]
-
-    assert len(chef_steps) > 0  # Chef has first night ability
-    assert len(imp_steps) > 0  # Imp has night ability
+    # Get other night steps (Imp has night ability)
+    other_night_state = test_case.state.model_copy(update={"is_first_night": False})
+    other_night_steps = other_night_state.get_night_steps()
+    imp_steps = [s for s in other_night_steps if s.name == "Imp"]
+    assert len(imp_steps) > 0
 
     # Kill the Chef
-    chef_player = test_case.game.get_player_by_name("Chef_Player")
-    assert chef_player is not None
-    chef_player.is_alive = False
-
-    # Chef steps should no longer appear in subsequent nights
-    # (but may still appear in first night since it's a different method)
-    updated_other_nights = list(test_case.game.get_other_night_steps())
-    chef_other_steps = [step for step in updated_other_nights if step.name == "Chef"]
-    assert len(chef_other_steps) == 0  # Dead Chef shouldn't have night actions
+    state = apply(
+        test_case.state,
+        _evt(test_case.state, PlayerAliveSet(player_name="Chef_Player", is_alive=False)),
+    )
+    dead_chef_state = state.model_copy(update={"is_first_night": False})
+    updated_steps = dead_chef_state.get_night_steps()
+    chef_other_steps = [s for s in updated_steps if s.name == "Chef"]
+    assert len(chef_other_steps) == 0
 
 
 @pytest.mark.anyio
 async def test_role_reveal_visibility():
     """Test role reveal visibility toggle."""
-    game = Game(script_name=ScriptName.TROUBLE_BREWING)
+    state = create_empty_game_state()
+    assert state.should_reveal_roles is False
 
-    # Initially roles should not be revealed
-    assert game.should_reveal_roles is False
-
-    # Toggle role reveal
-    game.should_reveal_roles = True
-    assert game.should_reveal_roles is True
+    state = apply(state, _evt(state, RoleVisibilitySet(should_reveal_roles=True)))
+    assert state.should_reveal_roles is True
 
 
 @pytest.mark.anyio
 async def test_player_removal():
     """Test removing players from the game."""
-    game = Game(script_name=ScriptName.TROUBLE_BREWING)
-    game.included_roles = game.script.characters.copy()
+    test_case = GameTestCase(roles=["Imp", "Chef"])
+    test_case.add_players_with_roles([("Alice", "Imp"), ("Bob", "Chef")])
 
-    # Add two players
-    player1 = game.add_player_with_role("Alice", "Imp")
-    game.add_player_with_role("Bob", "Chef")
+    assert len(test_case.state.players) == 2
+    original_roles_count = len(test_case.state.included_role_names)
 
-    assert len(game.players) == 2
-    original_roles_count = len(game.included_roles)
+    # Remove Alice
+    test_case.state = apply(
+        test_case.state,
+        _evt(test_case.state, PlayerRemoved(player_name="Alice")),
+    )
 
-    # Remove one player
-    game.remove_player_by_name(player1.name)
-
-    assert len(game.players) == 1
-    assert game.get_player_by_name("Alice") is None
-    assert game.get_player_by_name("Bob") is not None
-    # Role should be returned to available pool
-    assert len(game.included_roles) == original_roles_count + 1
+    assert len(test_case.state.players) == 1
+    assert test_case.state.get_player("Alice") is None
+    assert test_case.state.get_player("Bob") is not None
+    assert len(test_case.state.included_role_names) == original_roles_count + 1
 
 
 @pytest.mark.anyio
 async def test_player_removal_by_name():
     """Test removing players by name."""
-    game = Game(script_name=ScriptName.TROUBLE_BREWING)
-    game.included_roles = game.script.characters.copy()
+    test_case = GameTestCase(roles=["Imp", "Chef"])
+    test_case.add_players_with_roles([("Alice", "Imp"), ("Bob", "Chef")])
 
-    game.add_player_with_role("Alice", "Imp")
-    game.add_player_with_role("Bob", "Chef")
-
-    # Remove by name
-    game.remove_player_by_name("Alice")
-    assert len(game.players) == 1
-    assert game.get_player_by_name("Alice") is None
-
-
-@pytest.mark.anyio
-async def test_remove_nonexistent_player():
-    """Test that removing non-existent player raises appropriate error."""
-    game = Game(script_name=ScriptName.TROUBLE_BREWING)
-
-    with pytest.raises(ValueError, match="Player not found: NonExistentPlayer"):
-        game.remove_player_by_name("NonExistentPlayer")
+    test_case.state = apply(
+        test_case.state,
+        _evt(test_case.state, PlayerRemoved(player_name="Alice")),
+    )
+    assert len(test_case.state.players) == 1
+    assert test_case.state.get_player("Alice") is None
 
 
 @pytest.mark.anyio
@@ -217,13 +188,19 @@ async def test_living_player_count():
     test_case = GameTestCase(roles=["Imp", "Chef", "Monk"])
     test_case.add_players_with_roles([("Alice", "Imp"), ("Bob", "Chef"), ("Charlie", "Monk")])
 
-    assert test_case.game.living_player_count == 3
+    assert test_case.state.living_player_count == 3
 
-    test_case.game.set_player_alive_status("Alice", False)
-    assert test_case.game.living_player_count == 2
+    test_case.state = apply(
+        test_case.state,
+        _evt(test_case.state, PlayerAliveSet(player_name="Alice", is_alive=False)),
+    )
+    assert test_case.state.living_player_count == 2
 
-    test_case.game.set_player_alive_status("Bob", False)
-    assert test_case.game.living_player_count == 1
+    test_case.state = apply(
+        test_case.state,
+        _evt(test_case.state, PlayerAliveSet(player_name="Bob", is_alive=False)),
+    )
+    assert test_case.state.living_player_count == 1
 
 
 @pytest.mark.anyio
@@ -231,80 +208,69 @@ async def test_execution_threshold():
     """Test execution threshold is ceil(living / 2)."""
     test_case = GameTestCase(roles=["Imp", "Chef", "Monk", "Empath", "Poisoner"])
     test_case.add_players_with_roles(
-        [
-            ("Alice", "Imp"),
-            ("Bob", "Chef"),
-            ("Charlie", "Monk"),
-            ("Dave", "Empath"),
-            ("Eve", "Poisoner"),
-        ]
+        [("Alice", "Imp"), ("Bob", "Chef"), ("Charlie", "Monk"), ("Dave", "Empath"), ("Eve", "Poisoner")]
     )
 
-    # 5 living -> threshold 3
-    assert test_case.game.execution_threshold == 3
+    assert test_case.state.execution_threshold == 3  # 5 living
 
-    # 4 living -> threshold 2
-    test_case.game.set_player_alive_status("Alice", False)
-    assert test_case.game.execution_threshold == 2
+    test_case.state = apply(test_case.state, _evt(test_case.state, PlayerAliveSet(player_name="Alice", is_alive=False)))
+    assert test_case.state.execution_threshold == 2  # 4 living
 
-    # 3 living -> threshold 2
-    test_case.game.set_player_alive_status("Bob", False)
-    assert test_case.game.execution_threshold == 2
+    test_case.state = apply(test_case.state, _evt(test_case.state, PlayerAliveSet(player_name="Bob", is_alive=False)))
+    assert test_case.state.execution_threshold == 2  # 3 living
 
-    # 2 living -> threshold 1
-    test_case.game.set_player_alive_status("Charlie", False)
-    assert test_case.game.execution_threshold == 1
+    test_case.state = apply(
+        test_case.state, _evt(test_case.state, PlayerAliveSet(player_name="Charlie", is_alive=False))
+    )
+    assert test_case.state.execution_threshold == 1  # 2 living
 
 
 @pytest.mark.anyio
 async def test_dead_players_with_vote():
     """Test tracking dead players who still have their vote."""
-    test_case = GameTestCase(roles=["Imp", "Chef", "Monk"])
-    test_case.add_players_with_roles([("Alice", "Imp"), ("Bob", "Chef"), ("Charlie", "Monk")])
+    state = GameState.model_validate(
+        {
+            "game_id": "00000000-0000-0000-0000-000000000000",
+            "script_name": "trouble_brewing",
+            "players": [
+                {"name": "Alice", "character_name": "Imp", "alignment": "evil"},
+                {"name": "Bob", "character_name": "Chef", "alignment": "good"},
+                {"name": "Charlie", "character_name": "Monk", "alignment": "good"},
+            ],
+        }
+    )
 
-    # No dead players
-    assert test_case.game.get_dead_players_with_vote() == []
+    assert state.get_dead_players_with_vote() == []
 
-    # Kill Alice - she should have her dead vote
-    test_case.game.set_player_alive_status("Alice", False)
-    assert test_case.game.get_dead_players_with_vote() == ["Alice"]
+    # Kill Alice
+    state = apply(state, _evt(state, PlayerAliveSet(player_name="Alice", is_alive=False)))
+    assert state.get_dead_players_with_vote() == ["Alice"]
 
-    # Alice uses her dead vote
-    alice = test_case.game.get_player_by_name("Alice")
-    assert alice is not None
-    alice.set_has_used_dead_vote(True)
-    assert test_case.game.get_dead_players_with_vote() == []
+    # Alice uses her vote
+    state = state.replace_player("Alice", has_used_dead_vote=True)
+    assert state.get_dead_players_with_vote() == []
 
-    # Kill Bob - he should have his dead vote
-    test_case.game.set_player_alive_status("Bob", False)
-    assert test_case.game.get_dead_players_with_vote() == ["Bob"]
+    # Kill Bob
+    state = apply(state, _evt(state, PlayerAliveSet(player_name="Bob", is_alive=False)))
+    assert state.get_dead_players_with_vote() == ["Bob"]
 
 
 @pytest.mark.anyio
 async def test_night_phase_defaults():
     """Test that night phase fields have correct default values."""
-    game = Game(script_name=ScriptName.TROUBLE_BREWING)
-
-    # Check defaults
-    assert game.current_night_step == "Dusk"
-    assert game.is_first_night is True
+    state = create_empty_game_state()
+    assert state.current_night_step == "Dusk"
+    assert state.is_first_night is True
 
 
 @pytest.mark.anyio
 async def test_night_phase_modification():
-    """Test modifying night phase fields."""
-    game = Game(script_name=ScriptName.TROUBLE_BREWING)
+    """Test modifying night phase fields via events."""
+    state = create_empty_game_state()
 
-    # Modify current_night_step
-    game.current_night_step = "Poisoner"
-    assert game.current_night_step == "Poisoner"
+    state = apply(state, _evt(state, NightStepSet(step="Poisoner")))
+    assert state.current_night_step == "Poisoner"
 
-    # Modify is_first_night
-    game.is_first_night = False
-    assert game.is_first_night is False
-
-    # Change back
-    game.current_night_step = "Dusk"
-    game.is_first_night = True
-    assert game.current_night_step == "Dusk"
-    assert game.is_first_night is True
+    state = apply(state, _evt(state, FirstNightSet(is_first_night=False)))
+    assert state.is_first_night is False
+    assert state.current_night_step == "Dusk"  # Reset on toggle

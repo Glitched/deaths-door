@@ -1,11 +1,11 @@
-from contextlib import AbstractAsyncContextManager
+"""Routes for managing character roles in the game."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..character import Character, CharacterOut
-from ..game import Game
-from ..game_manager import get_current_game
+from ..character import CharacterOut
+from ..events import RoleIncluded, RoleRemoved, RolesIncluded
+from ..game_manager import game_manager
 
 
 class AddRoleResponse(BaseModel):
@@ -30,17 +30,15 @@ router = APIRouter(prefix="/characters", tags=["Characters"])
 
 
 @router.get("/list")
-async def get_game_roles(
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> list[CharacterOut]:
+async def get_game_roles() -> list[CharacterOut]:
     """
     List roles that have been added to the current game via /characters/add/multi.
 
     This returns the active role pool that players will be randomly assigned from.
     To see ALL possible roles in the script, use GET /game/script/roles instead.
     """
-    async with game_ctx as game:
-        return [c.to_out() for c in game.included_roles]
+    state = await game_manager.get_state()
+    return [c.to_out() for c in state.get_included_roles()]
 
 
 class AddRoleRequest(BaseModel):
@@ -54,19 +52,18 @@ class AddRoleRequest(BaseModel):
 
 
 @router.post("/add", responses={400: {"description": "Role not found or already included"}})
-async def add_role(
-    req: AddRoleRequest, game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game)
-) -> AddRoleResponse:
+async def add_role(req: AddRoleRequest) -> AddRoleResponse:
     """Add a role to the current game's included roles."""
-    async with game_ctx as game:
-        try:
-            game.include_role(req.name)
-            return AddRoleResponse(
-                status="success",
-                included_roles=[r.name for r in game.included_roles],
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
+    state = await game_manager.get_state()
+    script = state.get_script()
+    if script.get_character(req.name) is None:
+        raise HTTPException(status_code=400, detail=f"Role not found: {req.name}")
+
+    new_state = await game_manager.dispatch(RoleIncluded(name=req.name))
+    return AddRoleResponse(
+        status="success",
+        included_roles=list(new_state.included_role_names),
+    )
 
 
 class AddRoleMultiRequest(BaseModel):
@@ -80,24 +77,18 @@ class AddRoleMultiRequest(BaseModel):
 
 
 @router.post("/add/multi", responses={400: {"description": "One or more roles not found"}})
-async def add_role_multi(
-    req: AddRoleMultiRequest, game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game)
-) -> AddRoleMultiResponse:
+async def add_role_multi(req: AddRoleMultiRequest) -> AddRoleMultiResponse:
     """Add multiple roles to the current game (atomic operation)."""
-    async with game_ctx as game:
-        # Validate all names first (atomic operation)
-        characters: list[Character] = []
-        for name in req.names:
-            character = game.script.get_character(name)
-            if character is None:
-                raise HTTPException(status_code=400, detail=f"Role not found: {name}")
-            characters.append(character)
+    state = await game_manager.get_state()
+    script = state.get_script()
 
-        # All valid - now add them
-        for character in characters:
-            game.included_roles.append(character)
+    # Validate all names first
+    for name in req.names:
+        if script.get_character(name) is None:
+            raise HTTPException(status_code=400, detail=f"Role not found: {name}")
 
-        return AddRoleMultiResponse(status="success", added_count=len(characters))
+    await game_manager.dispatch(RolesIncluded(names=tuple(req.names)))
+    return AddRoleMultiResponse(status="success", added_count=len(req.names))
 
 
 class RemoveRoleRequest(BaseModel):
@@ -111,16 +102,15 @@ class RemoveRoleRequest(BaseModel):
 
 
 @router.post("/remove", responses={404: {"description": "Role not found in included roles"}})
-async def remove_role(
-    req: RemoveRoleRequest, game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game)
-) -> AddRoleResponse:
+async def remove_role(req: RemoveRoleRequest) -> AddRoleResponse:
     """Remove a role from the current game's included roles."""
-    async with game_ctx as game:
-        try:
-            game.remove_role(req.name)
-            return AddRoleResponse(
-                status="success",
-                included_roles=[r.name for r in game.included_roles],
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=404, detail=str(e)) from e
+    state = await game_manager.get_state()
+    normalized = req.name.lower().strip()
+    if not any(r.lower().strip() == normalized for r in state.included_role_names):
+        raise HTTPException(status_code=404, detail=f"Role not in game: {req.name}")
+
+    new_state = await game_manager.dispatch(RoleRemoved(name=req.name))
+    return AddRoleResponse(
+        status="success",
+        included_roles=list(new_state.included_role_names),
+    )

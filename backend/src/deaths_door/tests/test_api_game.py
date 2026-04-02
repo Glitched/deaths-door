@@ -357,3 +357,119 @@ async def test_get_game_state_includes_vote_info():
         response = await client.get("/game/state")
         state = response.json()
         assert state["dead_players_with_vote"] == []
+
+
+@pytest.mark.anyio
+async def test_game_history():
+    """Test getting event history for the current game."""
+    async with get_test_client() as client:
+        await setup_game_with_roles(client, roles=["Imp", "Chef"])
+        await add_test_players(client, ["Alice", "Bob"])
+
+        response = await client.get("/game/history")
+        assert response.status_code == 200
+
+        history = response.json()
+        assert history["version"] > 0
+        assert len(history["events"]) == history["version"]
+        assert history["events"][0]["event_type"] == "game_created"
+
+
+@pytest.mark.anyio
+async def test_rewind():
+    """Test rewinding a game to a previous version."""
+    async with get_test_client() as client:
+        await setup_game_with_roles(client, roles=["Imp", "Chef", "Monk"])
+        await add_test_players(client, ["Alice", "Bob"])
+
+        # Kill Alice
+        await client.post("/players/set_alive", json={"name": "Alice", "is_alive": False})
+
+        # Verify Alice is dead
+        state = (await client.get("/game/state")).json()
+        alice = next(p for p in state["players"] if p["name"] == "Alice")
+        assert alice["is_alive"] is False
+
+        # Get version before rewind
+        history = (await client.get("/game/history")).json()
+        rewind_to = history["version"] - 1  # Before the kill
+
+        # Rewind
+        response = await client.post("/game/rewind", json={"to_version": rewind_to})
+        assert response.status_code == 200
+
+        # Alice should be alive again
+        state = response.json()
+        alice = next(p for p in state["players"] if p["name"] == "Alice")
+        assert alice["is_alive"] is True
+
+
+@pytest.mark.anyio
+async def test_rewind_invalid_version():
+    """Test rewinding to an invalid version returns 400."""
+    async with get_test_client() as client:
+        await setup_game_with_roles(client)
+
+        response = await client.post("/game/rewind", json={"to_version": 999})
+        assert response.status_code == 400
+
+
+@pytest.mark.anyio
+async def test_fork():
+    """Test forking a game creates a new independent branch."""
+    async with get_test_client() as client:
+        await setup_game_with_roles(client, roles=["Imp", "Chef", "Monk"])
+        await add_test_players(client, ["Alice", "Bob"])
+
+        # Get version to fork from (before adding players would lose them)
+        history = (await client.get("/game/history")).json()
+        fork_version = history["version"]
+
+        # Fork
+        response = await client.post("/game/fork", json={"from_version": fork_version})
+        assert response.status_code == 200
+
+        fork_data = response.json()
+        assert "new_game_id" in fork_data
+        # Forked game should have the same version as fork point
+        assert fork_data["version"] == fork_version
+
+
+@pytest.mark.anyio
+async def test_load_game():
+    """Test loading a game by ID."""
+    async with get_test_client() as client:
+        # Create first game
+        await setup_game_with_roles(client, roles=["Imp", "Chef"])
+        await add_test_players(client, ["Alice"])
+
+        # Remember this game's ID
+        history1 = (await client.get("/game/history")).json()
+        game1_id = history1["game_id"]
+
+        # Create a second game (replaces current)
+        await setup_game_with_roles(client, roles=["Imp", "Chef", "Monk"])
+
+        # Load the first game back
+        response = await client.post("/game/load", json={"game_id": game1_id})
+        assert response.status_code == 200
+
+        # Should have Alice
+        loaded_state = response.json()
+        player_names = [p["name"] for p in loaded_state["players"]]
+        assert "Alice" in player_names
+
+
+@pytest.mark.anyio
+async def test_list_games():
+    """Test listing all saved games."""
+    async with get_test_client() as client:
+        # Create two games
+        await setup_game_with_roles(client)
+        await setup_game_with_roles(client)
+
+        response = await client.get("/game/list")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert len(data["game_ids"]) >= 2

@@ -1,34 +1,71 @@
-from contextlib import AbstractAsyncContextManager
+"""Routes for managing players in the game."""
+
+import secrets
 
 import anyio
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Path
 from fastapi.exceptions import HTTPException
 from pydantic import BaseModel, Field
 
 from ..alignment import Alignment
-from ..game import Game
-from ..game_manager import game_manager, get_current_game
-from ..player import Player, PlayerOut
+from ..events import (
+    CharactersSwapped,
+    DeadVoteUsedSet,
+    PlayerAdded,
+    PlayerAlignmentSet,
+    PlayerAliveSet,
+    PlayerRemoved,
+    PlayerRenamed,
+    RoleVisibilitySet,
+    StatusEffectAdded,
+    StatusEffectRemoved,
+    TravelerAdded,
+)
+from ..game_manager import game_manager
+from ..game_state import GameState, PlayerState, player_state_to_out
+from ..player import PlayerOut
 
 ROLE_REVEAL_TIMEOUT_ATTEMPTS = 100
 POLLING_INTERVAL_SECONDS = 0.1
 
-
-class RemovePlayerResponse(BaseModel):
-    """Response after removing a player from the game."""
-
-    status: str = Field(..., description="Operation status", examples=["success"])
-    remaining_players: list[str] = Field(
-        ..., description="Names of players still in the game", examples=[["Bob", "Charlie"]]
-    )
+# Mapping of characters to their persistent status effects (for death cleanup)
+CHARACTER_PERSISTENT_EFFECTS: dict[str, list[str]] = {
+    "Poisoner": ["Poisoned"],
+    "Monk": ["Safe"],
+    "Butler": ["Butler's Master"],
+}
 
 
-def get_player_or_404(game: Game, name: str) -> Player:
+def get_player_or_404(state: GameState, name: str) -> PlayerState:
     """Get player by name or raise 404 error."""
-    player = game.get_player_by_name(name)
+    player = state.get_player(name)
     if player is None:
         raise HTTPException(status_code=404, detail=f"Player not found: {name}")
     return player
+
+
+def _to_out(state: GameState, player_name: str) -> PlayerOut:
+    """Convert a player from the current state to API output."""
+    player = get_player_or_404(state, player_name)
+    return player_state_to_out(player, state.get_script())
+
+
+def compute_death_cleared_effects(state: GameState, player_name: str) -> tuple[tuple[str, str], ...]:
+    """Compute cascading status effect removals when a player dies."""
+    player = state.get_player(player_name)
+    if player is None:
+        return ()
+
+    effects_to_remove = CHARACTER_PERSISTENT_EFFECTS.get(player.character_name, [])
+    if not effects_to_remove:
+        return ()
+
+    cleared: list[tuple[str, str]] = []
+    for p in state.players:
+        for effect in effects_to_remove:
+            if effect in p.status_effects:
+                cleared.append((p.name, effect))
+    return tuple(cleared)
 
 
 router = APIRouter(prefix="/players", tags=["Players"])
@@ -54,25 +91,30 @@ class AddPlayerRequest(BaseModel):
         409: {"description": "Player with this name already exists"},
     },
 )
-async def add_player(
-    req: AddPlayerRequest,
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> PlayerOut:
+async def add_player(req: AddPlayerRequest) -> PlayerOut:
     """Add a player to the current game with a randomly assigned role."""
-    async with game_ctx as game:
-        try:
-            existing_player = game.get_player_by_name(req.name)
-            if existing_player:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Player with name {req.name} already exists.",
-                )
-            player = game.add_player_with_random_role(req.name)
-        except ValueError as e:
-            # No roles to assign, role not found, etc. - these are 400 Bad Request
-            raise HTTPException(status_code=400, detail=str(e)) from e
+    state = await game_manager.get_state()
 
-        return player.to_out()
+    if state.get_player(req.name) is not None:
+        raise HTTPException(status_code=409, detail=f"Player with name {req.name} already exists.")
+    if not state.included_role_names:
+        raise HTTPException(status_code=400, detail="No roles to assign")
+
+    # Resolve randomness BEFORE creating the event
+    chosen_name = secrets.choice(state.included_role_names)
+    script = state.get_script()
+    character = script.get_character(chosen_name)
+    if character is None:
+        raise HTTPException(status_code=400, detail=f"Character not found: {chosen_name}")
+
+    new_state = await game_manager.dispatch(
+        PlayerAdded(
+            player_name=req.name,
+            character_name=character.name,
+            alignment=character.alignment.value,
+        )
+    )
+    return _to_out(new_state, req.name)
 
 
 class AddTravelerRequest(BaseModel):
@@ -98,37 +140,35 @@ class AddTravelerRequest(BaseModel):
         409: {"description": "Player with this name already exists"},
     },
 )
-async def add_player_as_traveler(
-    req: AddTravelerRequest, game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game)
-) -> PlayerOut:
+async def add_player_as_traveler(req: AddTravelerRequest) -> PlayerOut:
     """Add a player to the current game as a specific traveler character."""
-    async with game_ctx as game:
-        try:
-            # Check if the player already exists
-            existing_player = game.get_player_by_name(req.name)
-            if existing_player:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Player with name {req.name} already exists.",
-                )
-            player = game.add_player_as_traveler(req.name, req.traveler)
-        except ValueError as e:
-            # Traveler not found - this is 404 Not Found
-            if "not found" in str(e).lower():
-                raise HTTPException(status_code=404, detail=str(e)) from e
-            # Other validation errors are 400 Bad Request
-            raise HTTPException(status_code=400, detail=str(e)) from e
+    state = await game_manager.get_state()
 
-        return player.to_out()
+    if state.get_player(req.name) is not None:
+        raise HTTPException(status_code=409, detail=f"Player with name {req.name} already exists.")
+
+    # Check traveler is valid and unclaimed
+    unclaimed = state.get_unclaimed_travelers()
+    traveler = next((t for t in unclaimed if t.name == req.traveler), None)
+    if traveler is None:
+        raise HTTPException(status_code=404, detail=f"Traveler not found or in game: {req.traveler}")
+
+    new_state = await game_manager.dispatch(
+        TravelerAdded(
+            player_name=req.name,
+            traveler_name=traveler.name,
+            alignment=traveler.alignment.value,
+        )
+    )
+    return _to_out(new_state, req.name)
 
 
 @router.get("/list")
-async def list_players(
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> list[PlayerOut]:
+async def list_players() -> list[PlayerOut]:
     """List the players in the current game."""
-    async with game_ctx as game:
-        return [player.to_out() for player in game.players]
+    state = await game_manager.get_state()
+    script = state.get_script()
+    return [player_state_to_out(p, script) for p in state.players]
 
 
 @router.get(
@@ -142,17 +182,16 @@ async def get_player_role(
     name: str = Path(..., description="Player's name", examples=["Alice"]),
 ) -> PlayerOut:
     """Get the role of a player in the current game (waits for role reveal if needed)."""
-    # First check if player exists
-    async with game_manager.locked_game() as game:
-        player = get_player_or_404(game, name)
+    # Check player exists
+    state = await game_manager.get_state()
+    get_player_or_404(state, name)
 
-    # Poll for role reveal WITHOUT holding the lock
-    # This prevents deadlock when multiple players are waiting for reveal
+    # Poll for role reveal
     polling_attempts = 0
     should_reveal = False
     while not should_reveal and polling_attempts < ROLE_REVEAL_TIMEOUT_ATTEMPTS:
-        async with game_manager.locked_game() as game:
-            should_reveal = game.should_reveal_roles
+        state = await game_manager.get_state()
+        should_reveal = state.should_reveal_roles
         if not should_reveal:
             await anyio.sleep(POLLING_INTERVAL_SECONDS)
             polling_attempts += 1
@@ -161,13 +200,11 @@ async def get_player_role(
         timeout_seconds = ROLE_REVEAL_TIMEOUT_ATTEMPTS * POLLING_INTERVAL_SECONDS
         raise HTTPException(
             status_code=408,
-            detail=(f"Role reveal timed out after {timeout_seconds}s. Check if roles are set to be revealed."),
+            detail=f"Role reveal timed out after {timeout_seconds}s. Check if roles are set to be revealed.",
         )
 
-    # Return the player data
-    async with game_manager.locked_game() as game:
-        player = get_player_or_404(game, name)
-        return player.to_out()
+    state = await game_manager.get_state()
+    return _to_out(state, name)
 
 
 class SetPlayerAliveRequest(BaseModel):
@@ -182,19 +219,24 @@ class SetPlayerAliveRequest(BaseModel):
 
 
 @router.post("/set_alive", responses={404: {"description": "Player not found"}})
-async def set_player_alive(
-    req: SetPlayerAliveRequest, game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game)
-) -> PlayerOut:
+async def set_player_alive(req: SetPlayerAliveRequest) -> PlayerOut:
     """Set the alive status of a player (automatically clears status effects on death)."""
-    async with game_ctx as game:
-        try:
-            game.set_player_alive_status(req.name, req.is_alive)
-            player = game.get_player_by_name(req.name)
-            if player is None:
-                raise HTTPException(status_code=404, detail=f"Player '{req.name}' not found")
-            return player.to_out()
-        except ValueError as e:
-            raise HTTPException(status_code=404, detail=str(e)) from e
+    state = await game_manager.get_state()
+    player = get_player_or_404(state, req.name)
+
+    # Compute cascading effects if the player is dying
+    cleared_effects: tuple[tuple[str, str], ...] = ()
+    if player.is_alive and not req.is_alive:
+        cleared_effects = compute_death_cleared_effects(state, req.name)
+
+    new_state = await game_manager.dispatch(
+        PlayerAliveSet(
+            player_name=req.name,
+            is_alive=req.is_alive,
+            cleared_effects=cleared_effects,
+        )
+    )
+    return _to_out(new_state, req.name)
 
 
 class SetPlayerHasUsedDeadVoteRequest(BaseModel):
@@ -209,18 +251,15 @@ class SetPlayerHasUsedDeadVoteRequest(BaseModel):
 
 
 @router.post("/set_has_used_dead_vote", responses={404: {"description": "Player not found"}})
-async def set_player_has_used_dead_vote(
-    req: SetPlayerHasUsedDeadVoteRequest,
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> PlayerOut:
+async def set_player_has_used_dead_vote(req: SetPlayerHasUsedDeadVoteRequest) -> PlayerOut:
     """Mark whether a dead player has used their single vote."""
-    async with game_ctx as game:
-        player = game.get_player_by_name(req.name)
-        if player is None:
-            raise HTTPException(status_code=404, detail=f"Player not found: {req.name}")
+    state = await game_manager.get_state()
+    get_player_or_404(state, req.name)
 
-        player.set_has_used_dead_vote(req.has_used_dead_vote)
-        return player.to_out()
+    new_state = await game_manager.dispatch(
+        DeadVoteUsedSet(player_name=req.name, has_used_dead_vote=req.has_used_dead_vote)
+    )
+    return _to_out(new_state, req.name)
 
 
 class SetPlayerAlignmentRequest(BaseModel):
@@ -235,18 +274,13 @@ class SetPlayerAlignmentRequest(BaseModel):
 
 
 @router.post("/set_alignment", responses={404: {"description": "Player not found"}})
-async def set_player_alignment(
-    req: SetPlayerAlignmentRequest,
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> PlayerOut:
+async def set_player_alignment(req: SetPlayerAlignmentRequest) -> PlayerOut:
     """Set the alignment of a player (good, evil, or unknown for travelers)."""
-    async with game_ctx as game:
-        player = game.get_player_by_name(req.name)
-        if player is None:
-            raise HTTPException(status_code=404, detail=f"Player not found: {req.name}")
+    state = await game_manager.get_state()
+    get_player_or_404(state, req.name)
 
-        player.set_alignment(req.alignment)
-        return player.to_out()
+    new_state = await game_manager.dispatch(PlayerAlignmentSet(player_name=req.name, alignment=req.alignment.value))
+    return _to_out(new_state, req.name)
 
 
 class SwapCharacterRequest(BaseModel):
@@ -265,29 +299,18 @@ class SwapCharacterResponse(BaseModel):
 
 
 @router.post("/swap_character", responses={404: {"description": "One or both players not found"}})
-async def swap_character(
-    req: SwapCharacterRequest, game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game)
-) -> SwapCharacterResponse:
+async def swap_character(req: SwapCharacterRequest) -> SwapCharacterResponse:
     """Swap the characters between two players in the current game."""
-    async with game_ctx as game:
-        player1 = game.get_player_by_name(req.name1)
-        if player1 is None:
-            raise HTTPException(status_code=404, detail=f"Player not found: {req.name1}")
-        character1 = player1.character
+    state = await game_manager.get_state()
+    get_player_or_404(state, req.name1)
+    get_player_or_404(state, req.name2)
 
-        player2 = game.get_player_by_name(req.name2)
-        if player2 is None:
-            raise HTTPException(status_code=404, detail=f"Player not found: {req.name2}")
-        character2 = player2.character
-
-        player1.set_character(character2)
-        player2.set_character(character1)
-
-        return SwapCharacterResponse(
-            status="success",
-            player1=player1.to_out(),
-            player2=player2.to_out(),
-        )
+    new_state = await game_manager.dispatch(CharactersSwapped(name1=req.name1, name2=req.name2))
+    return SwapCharacterResponse(
+        status="success",
+        player1=_to_out(new_state, req.name1),
+        player2=_to_out(new_state, req.name2),
+    )
 
 
 class RenamePlayerRequest(BaseModel):
@@ -298,17 +321,13 @@ class RenamePlayerRequest(BaseModel):
 
 
 @router.post("/rename", responses={404: {"description": "Player not found"}})
-async def rename_player(
-    req: RenamePlayerRequest, game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game)
-) -> PlayerOut:
+async def rename_player(req: RenamePlayerRequest) -> PlayerOut:
     """Rename a player in the current game."""
-    async with game_ctx as game:
-        player = game.get_player_by_name(req.name)
-        if player is None:
-            raise HTTPException(status_code=404, detail=f"Player not found: {req.name}")
+    state = await game_manager.get_state()
+    get_player_or_404(state, req.name)
 
-        player.set_name(req.new_name)
-        return player.to_out()
+    new_state = await game_manager.dispatch(PlayerRenamed(old_name=req.name, new_name=req.new_name))
+    return _to_out(new_state, req.new_name)
 
 
 class RemovePlayerRequest(BaseModel):
@@ -317,35 +336,40 @@ class RemovePlayerRequest(BaseModel):
     name: str = Field(..., description="Player's name to remove", examples=["Alice"])
 
 
+class RemovePlayerResponse(BaseModel):
+    """Response after removing a player from the game."""
+
+    status: str = Field(..., description="Operation status", examples=["success"])
+    remaining_players: list[str] = Field(
+        ..., description="Names of players still in the game", examples=[["Bob", "Charlie"]]
+    )
+
+
 @router.post("/remove", responses={404: {"description": "Player not found"}})
-async def remove_player(
-    req: RemovePlayerRequest, game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game)
-) -> RemovePlayerResponse:
+async def remove_player(req: RemovePlayerRequest) -> RemovePlayerResponse:
     """Remove a player from the current game."""
-    async with game_ctx as game:
-        try:
-            game.remove_player_by_name(req.name)
-            return RemovePlayerResponse(status="success", remaining_players=[p.name for p in game.players])
-        except ValueError as e:
-            raise HTTPException(status_code=404, detail=str(e)) from e
+    state = await game_manager.get_state()
+    get_player_or_404(state, req.name)
+
+    new_state = await game_manager.dispatch(PlayerRemoved(player_name=req.name))
+    return RemovePlayerResponse(
+        status="success",
+        remaining_players=[p.name for p in new_state.players],
+    )
 
 
 @router.get("/names")
-async def get_game_players_names(
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> list[str]:
+async def get_game_players_names() -> list[str]:
     """Return the names of the players in the current game."""
-    async with game_ctx as game:
-        return [player.name for player in game.players]
+    state = await game_manager.get_state()
+    return [p.name for p in state.players]
 
 
 @router.get("/visibility")
-async def get_roles_visibility(
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> bool:
+async def get_roles_visibility() -> bool:
     """Get the visibility of the roles for the current game."""
-    async with game_ctx as game:
-        return game.should_reveal_roles
+    state = await game_manager.get_state()
+    return state.should_reveal_roles
 
 
 class SetRolesVisibilityRequest(BaseModel):
@@ -359,14 +383,10 @@ class SetRolesVisibilityRequest(BaseModel):
 
 
 @router.post("/set_visibility")
-async def set_roles_visibility(
-    req: SetRolesVisibilityRequest,
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> bool:
+async def set_roles_visibility(req: SetRolesVisibilityRequest) -> bool:
     """Set the visibility of the roles for the current game."""
-    async with game_ctx as game:
-        game.should_reveal_roles = req.should_reveal_roles
-        return game.should_reveal_roles
+    new_state = await game_manager.dispatch(RoleVisibilitySet(should_reveal_roles=req.should_reveal_roles))
+    return new_state.should_reveal_roles
 
 
 class AddStatusEffectRequest(BaseModel):
@@ -381,18 +401,13 @@ class AddStatusEffectRequest(BaseModel):
 
 
 @router.post("/add_status_effect", responses={404: {"description": "Player not found"}})
-async def add_status_effect(
-    req: AddStatusEffectRequest,
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> PlayerOut:
+async def add_status_effect(req: AddStatusEffectRequest) -> PlayerOut:
     """Add a status effect to a player (e.g., Poisoned, Safe, Drunk)."""
-    async with game_ctx as game:
-        player = game.get_player_by_name(req.name)
-        if player is None:
-            raise HTTPException(status_code=404, detail=f"Player not found: {req.name}")
+    state = await game_manager.get_state()
+    get_player_or_404(state, req.name)
 
-        player.add_status_effect(req.status_effect)
-        return player.to_out()
+    new_state = await game_manager.dispatch(StatusEffectAdded(player_name=req.name, effect=req.status_effect))
+    return _to_out(new_state, req.name)
 
 
 class RemoveStatusEffectRequest(BaseModel):
@@ -407,15 +422,10 @@ class RemoveStatusEffectRequest(BaseModel):
 
 
 @router.post("/remove_status_effect", responses={404: {"description": "Player not found"}})
-async def remove_status_effect(
-    req: RemoveStatusEffectRequest,
-    game_ctx: AbstractAsyncContextManager[Game] = Depends(get_current_game),
-) -> PlayerOut:
+async def remove_status_effect(req: RemoveStatusEffectRequest) -> PlayerOut:
     """Remove a status effect from a player."""
-    async with game_ctx as game:
-        player = game.get_player_by_name(req.name)
-        if player is None:
-            raise HTTPException(status_code=404, detail=f"Player not found: {req.name}")
+    state = await game_manager.get_state()
+    get_player_or_404(state, req.name)
 
-        player.remove_status_effect(req.status_effect)
-        return player.to_out()
+    new_state = await game_manager.dispatch(StatusEffectRemoved(player_name=req.name, effect=req.status_effect))
+    return _to_out(new_state, req.name)
