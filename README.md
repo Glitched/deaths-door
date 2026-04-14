@@ -1,21 +1,41 @@
 # Death's Door
 
-This repo contains a small tool we wrote to increase the production value when we host games of [Blood on the Clocktower](https://bloodontheclocktower.com/).
+A tool to increase the production value when we host games of [Blood on the Clocktower](https://bloodontheclocktower.com/).
 
-The backend component, a [FastAPI](https://fastapi.tiangolo.com/) app, is intended to be run on a computer powering the speakers/music for the event. Currently it has limited soundboard capabilities, but we intend to expand it to include support for setting up [OBS](https://obsproject.com/) scenes with timers, death screens, and more.
+The backend ([FastAPI](https://fastapi.tiangolo.com/)) manages game state with event sourcing, provides a soundboard, controls DMX lighting, and pushes live updates via SSE and APNS.
 
-The frontend is a [NextJS](https://nextjs.org/) app intended to serve as a small remote, allowing us to trigger sound effects, OBS scenes, or advance the game state.
+The frontend ([React](https://react.dev/) + [Vite](https://vite.dev/)) is a streaming overlay projected on a wall — countdown timer, player list, and vote threshold — designed to replace OBS scenes.
 
-Currently, we're building out a representation of game state to provide sensible options without large amounts of manual input. The goal is to operate as seamlessly as possible and add to the experience of playing the game rather than detract from it.
+An iOS app (maintained separately) serves as the storyteller's primary remote control interface.
 
-## Running the backend
+## Quick Start
 
-1. Install the font [Help Me](https://www.dafont.com/help-me.font)
-2. Install and run [OBS](https://obsproject.com/downloads)
-3. Enable the websocket and set the password in your environment as `OBS_PASSWORD`
-4. Install packages via [uv](https://docs.astral.sh/uv/) with `uv sync`
-5. Run the backend with `uv run uvicorn src.deaths_door.main:app`. You may add `--reload` to the command to have the server restart when you change the code.
+```bash
+# Backend
+cd backend
+uv sync
+make run         # or: make sample (loads a pre-built test game)
 
-## Frontend
+# Frontend (dev mode with hot reload)
+cd frontend
+npm install
+npm run dev      # http://localhost:5173/overlay
 
-The NextJS frontend has been deprioritized in favor of a native iOS app, which is not yet published.
+# Build frontend into backend for single-server mode
+make build       # then: make run serves everything on :8000
+```
+
+## Running a Game
+
+1. Start the backend: `make run` (or `make sample` for a test game)
+2. Start the frontend: `cd frontend && npm run dev`
+3. Project `http://localhost:5173/overlay` on the wall
+4. Control the game from the iOS app
+5. Players visit `http://localhost:8000/reveal` on their phones to see their roles
+
+## Requirements
+
+- Python 3.14+ (managed by [uv](https://docs.astral.sh/uv/))
+- Node.js 25+ (managed by [mise](https://mise.jdx.dev/))
+- Font [Help Me](https://www.dafont.com/help-me.font) (optional — falls back to Impact)
+- **Optional:** DMX USB interface for lighting effects
