@@ -63,6 +63,9 @@ db.sqlite3-journal
 *.db
 *.db-journal
 
+# Built frontend served by backend
+backend/static/app/
+
 # Flask stuff:
 instance/
 .webassets-cache

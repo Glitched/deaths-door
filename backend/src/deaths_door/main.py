@@ -1,4 +1,7 @@
+import os
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -81,6 +84,13 @@ to enable/disable. When disabled, `GET /players/name/{name}` will wait up to 10 
         },
     ],
 )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(sounds.router)
 app.include_router(scripts.router)
 app.include_router(game.router)
@@ -98,16 +108,13 @@ def health():
     return {"status": "ok", "version": "0.0.1"}
 
 
-# Vanity routes for the web client
-
-
-@app.get("/favicon.ico", tags=["System"])
-def favicon():
-    """Serve the application favicon."""
-    return FileResponse("static/favicon.ico", media_type="image/x-icon")
-
-
-@app.get("/", tags=["System"])
-def root():
+# Role reveal page (legacy static HTML)
+@app.get("/reveal", tags=["System"])
+def reveal():
     """Serve the role reveal web interface."""
     return FileResponse("static/role.html", media_type="text/html")
+
+
+# Serve built frontend app — mount last so API routes take priority
+if os.path.isdir("static/app"):
+    app.mount("/", StaticFiles(directory="static/app", html=True), name="frontend")
