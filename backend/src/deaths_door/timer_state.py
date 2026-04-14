@@ -1,12 +1,12 @@
+"""Timer state management."""
+
 from __future__ import annotations
 
 import asyncio
 import logging
 
 from .apns_manager import APNSManager
-from .config import Config
 from .game_manager import game_manager
-from .obs_manager import ObsManager
 from .sound_fx import SoundFX, SoundName
 
 logger = logging.getLogger(__name__)
@@ -18,39 +18,28 @@ class TimerState:
     is_running: bool = False
     seconds: int = 5 * 60
     _lock: asyncio.Lock
-    _obs_manager: ObsManager
     _apns_manager: APNSManager
 
-    def __init__(self):
-        """Initialize the timer, OBS manager, and APNS manager."""
+    def __init__(self) -> None:
+        """Initialize the timer and APNS manager."""
         self._lock = asyncio.Lock()
-        self._obs_manager = ObsManager(host="localhost", port=4455, password=Config.get_obs_password())
         self._apns_manager = APNSManager()
-        self._tick_task = None
+        self._tick_task: asyncio.Task[None] | None = None
 
-        try:
-            self._obs_manager.setup_obs_scene()
-        except Exception as e:
-            if Config.is_obs_required():
-                raise RuntimeError(f"OBS connection required but failed: {e}") from e
-            logger.warning(f"OBS not available, running without streaming support: {e}")
-
-    def _ensure_tick_task_running(self):
+    def _ensure_tick_task_running(self) -> None:
         """Ensure the tick task is running if we have an event loop."""
         if self._tick_task is None or self._tick_task.done():
             try:
                 loop = asyncio.get_running_loop()
                 self._tick_task = loop.create_task(self.handle_tick())
             except RuntimeError:
-                # No running loop - that's fine, task will start when loop exists
                 pass
 
-    async def handle_tick(self):
+    async def handle_tick(self) -> None:
         """Handle the tick of the timer."""
         while True:
             async with self._lock:
                 if self.is_running:
-                    await self._obs_manager.update_timer_async(self.seconds)
                     if self.seconds > 0:
                         self.seconds -= 1
                     else:
@@ -74,7 +63,7 @@ class TimerState:
         except Exception:
             return 0, 0
 
-    async def set_is_running(self, new_value: bool):
+    async def set_is_running(self, new_value: bool) -> None:
         """Set whether the timer should be running."""
         self._ensure_tick_task_running()
         async with self._lock:
@@ -82,7 +71,7 @@ class TimerState:
             alive, total = await self._get_player_counts()
             await self._apns_manager.send_timer_update(self.seconds, self.is_running, alive, total)
 
-    async def set_seconds(self, new_value: int):
+    async def set_seconds(self, new_value: int) -> None:
         """Set the number of seconds left."""
         self._ensure_tick_task_running()
         async with self._lock:
@@ -92,16 +81,16 @@ class TimerState:
             alive, total = await self._get_player_counts()
             await self._apns_manager.send_timer_update(self.seconds, self.is_running, alive, total)
 
-    async def add_seconds(self, additional_seconds: int):
+    async def add_seconds(self, additional_seconds: int) -> None:
         """Add the given number of seconds to the timer."""
         await self.set_seconds(self.seconds + additional_seconds)
 
-    async def get_seconds(self):
+    async def get_seconds(self) -> int:
         """Get the number of seconds left."""
         async with self._lock:
             return self.seconds
 
-    async def get_is_running(self):
+    async def get_is_running(self) -> bool:
         """Get whether the timer is running."""
         async with self._lock:
             return self.is_running

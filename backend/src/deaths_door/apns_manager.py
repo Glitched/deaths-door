@@ -113,7 +113,7 @@ class APNSManager:
             logger.info("APNS: no push tokens registered, skipping")
             return
 
-        logger.info(f"APNS: pushing update (alive={players_alive}/{total_players}, timer={seconds}s, running={is_running})")
+        logger.info(f"APNS: pushing update (alive={players_alive}/{total_players}, timer={seconds}s, run={is_running})")
 
         assert self._bundle_id is not None
 

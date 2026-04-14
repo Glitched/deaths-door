@@ -18,8 +18,7 @@ Blood on the Clocktower game management system with streaming integration.
 * **Player Operations**: Add players, assign roles, track status
 * **Night Phase Guidance**: Get filtered night steps based on alive players
 * **Status Effects**: Automatic cleanup when characters die
-* **OBS Integration**: Optional streaming overlay support
-* **Timer Management**: Countdown timer with OBS sync
+* **Timer Management**: Countdown timer with web overlay and APNS push
 
 ## Workflow
 
@@ -68,7 +67,7 @@ to enable/disable. When disabled, `GET /players/name/{name}` will wait up to 10 
         },
         {
             "name": "Timer",
-            "description": "Control the countdown timer for discussion phases. Syncs with OBS when available.",
+            "description": "Control the countdown timer for discussion phases.",
         },
         {
             "name": "Sounds",

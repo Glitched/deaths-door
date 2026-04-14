@@ -168,4 +168,5 @@ cython_debug/
 .DS_Store
 
 # APNS keys
-backend/keys/*.p8
+keys/
+*.p8

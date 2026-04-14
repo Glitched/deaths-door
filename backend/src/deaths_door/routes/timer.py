@@ -41,7 +41,8 @@ state = TimerState()
 
 
 async def push_live_activity_update(players_alive: int, total_players: int) -> None:
-    """Push a Live Activity update with current timer state and player counts.
+    """
+    Push a Live Activity update with current timer state and player counts.
 
     Called from player routes when alive/total counts change.
     """
