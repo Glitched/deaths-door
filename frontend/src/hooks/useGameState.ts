@@ -1,35 +1,59 @@
 import { useEffect, useRef, useState } from "react";
-import { apiFetch } from "@/api/client";
 import type { GameState } from "@/api/types";
 
-export function useGameState(intervalMs = 3000): GameState | null {
+const STREAM_URL = import.meta.env.DEV ? "/api/game/stream" : "/game/stream";
+
+export type ConnectionStatus = "connecting" | "connected" | "disconnected";
+
+export interface GameStateResult {
+  state: GameState | null;
+  status: ConnectionStatus;
+}
+
+export function useGameState(): GameStateResult {
   const [state, setState] = useState<GameState | null>(null);
+  const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const lastGood = useRef<GameState | null>(null);
 
   useEffect(() => {
     let active = true;
+    let eventSource: EventSource | null = null;
 
-    const poll = async () => {
-      try {
-        const data = await apiFetch<GameState>("/game/state");
-        if (active) {
+    function connect() {
+      eventSource = new EventSource(STREAM_URL);
+
+      eventSource.onopen = () => {
+        if (active) setStatus("connected");
+      };
+
+      eventSource.onmessage = (event) => {
+        if (!active) return;
+        try {
+          const data = JSON.parse(event.data) as GameState;
           lastGood.current = data;
           setState(data);
+          setStatus("connected");
+        } catch {
+          // Ignore malformed messages
         }
-      } catch {
-        if (active && lastGood.current) {
+      };
+
+      eventSource.onerror = () => {
+        if (!active) return;
+        setStatus("disconnected");
+        if (lastGood.current) {
           setState(lastGood.current);
         }
-      }
-    };
+      };
+    }
 
-    poll();
-    const id = setInterval(poll, intervalMs);
+    connect();
+
     return () => {
       active = false;
-      clearInterval(id);
+      eventSource?.close();
     };
-  }, [intervalMs]);
+  }, []);
 
-  return state;
+  return { state, status };
 }

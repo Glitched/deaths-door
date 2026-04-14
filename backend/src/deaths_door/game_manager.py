@@ -38,6 +38,7 @@ class GameManager:
         self._store = event_store
         self._state: GameState | None = None
         self._lock = asyncio.Lock()
+        self._subscribers: list[asyncio.Queue[GameState]] = []
 
     @property
     def state(self) -> GameState:
@@ -61,6 +62,7 @@ class GameManager:
             # Persist only after successful apply
             self._store.append(event)
             self._state = new_state
+            self._notify_subscribers(new_state)
             return new_state
 
     async def get_state(self) -> GameState:
@@ -186,6 +188,25 @@ class GameManager:
     def has_active_game(self) -> bool:
         """Check if there is an active game loaded."""
         return self._state is not None
+
+    def subscribe(self) -> asyncio.Queue[GameState]:
+        """Subscribe to state changes. Returns a queue that receives new states."""
+        queue: asyncio.Queue[GameState] = asyncio.Queue()
+        self._subscribers.append(queue)
+        return queue
+
+    def unsubscribe(self, queue: asyncio.Queue[GameState]) -> None:
+        """Unsubscribe from state changes."""
+        self._subscribers.remove(queue)
+
+    def _notify_subscribers(self, state: GameState) -> None:
+        """Push new state to all subscribers."""
+        for queue in self._subscribers:
+            # Non-blocking put — drop if a subscriber is backed up
+            try:
+                queue.put_nowait(state)
+            except asyncio.QueueFull:
+                pass
 
 
 # Module-level singleton

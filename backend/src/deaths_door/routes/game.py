@@ -1,15 +1,18 @@
 """Routes for game management, night phases, and consolidated state."""
 
+import asyncio
+import json
 from uuid import UUID
 
 from fastapi import APIRouter
 from fastapi.exceptions import HTTPException
 from pydantic import BaseModel, Field
+from starlette.responses import StreamingResponse
 
 from ..character import CharacterOut
 from ..events import EventType, FirstNightSet, NightStepSet, describe_event
 from ..game_manager import game_manager
-from ..game_state import game_state_to_included_role_outs, player_state_to_out
+from ..game_state import GameState, game_state_to_included_role_outs, player_state_to_out
 from ..night_step import NightStep
 from ..player import PlayerOut
 from ..script_name import ScriptName
@@ -392,3 +395,55 @@ async def list_games() -> GameListResponse:
     """List all saved game IDs. Use with POST /game/load to switch between games."""
     ids = await game_manager.list_games()
     return GameListResponse(game_ids=[str(gid) for gid in ids])
+
+
+def _serialize_game_state(state: GameState) -> dict[str, object]:
+    """Serialize GameState to the same shape as GameStateResponse."""
+    script = state.get_script()
+    return {
+        "script_name": state.script_name,
+        "players": [player_state_to_out(p, script).model_dump() for p in state.players],
+        "current_night_step": state.current_night_step,
+        "is_first_night": state.is_first_night,
+        "should_reveal_roles": state.should_reveal_roles,
+        "status_effects": [e.model_dump() for e in state.get_status_effects()],
+        "included_roles": [c.model_dump() for c in game_state_to_included_role_outs(state)],
+        "night_steps": [s.model_dump() for s in state.get_night_steps()],
+        "living_player_count": state.living_player_count,
+        "execution_threshold": state.execution_threshold,
+        "dead_players_with_vote": state.get_dead_players_with_vote(),
+    }
+
+
+@router.get("/stream")
+async def stream_game_state() -> StreamingResponse:
+    """
+    Stream game state changes via Server-Sent Events.
+
+    Sends the full game state on connect and after every mutation.
+    Use this instead of polling GET /game/state for real-time updates.
+    """
+
+    async def event_generator():  # noqa: ANN202
+        queue = game_manager.subscribe()
+        try:
+            # Send current state immediately on connect
+            state = await game_manager.get_state()
+            data = json.dumps(_serialize_game_state(state))
+            yield f"data: {data}\n\n"
+
+            # Stream updates as they happen
+            while True:
+                new_state = await queue.get()
+                data = json.dumps(_serialize_game_state(new_state))
+                yield f"data: {data}\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            game_manager.unsubscribe(queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
