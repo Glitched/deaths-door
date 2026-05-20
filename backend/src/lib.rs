@@ -16,6 +16,7 @@ pub mod events;
 pub mod game_manager;
 pub mod game_state;
 pub mod lighting;
+pub mod lock;
 pub mod night_step;
 pub mod player;
 pub mod script;

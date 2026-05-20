@@ -18,6 +18,7 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::config;
+use crate::lock::LockExt;
 
 /// Offset between the Unix epoch and Swift's reference date (Jan 1, 2001).
 const SWIFT_EPOCH_OFFSET: f64 = 978_307_200.0;
@@ -104,7 +105,7 @@ impl ApnsManager {
 
     pub fn register_token(&self, token: String) {
         let preview: String = token.chars().take(8).collect();
-        self.inner.push_tokens.lock().unwrap().insert(token);
+        self.inner.push_tokens.lock_recover().insert(token);
         tracing::info!("Registered APNS push token: {preview}...");
     }
 
@@ -130,7 +131,7 @@ impl ApnsManager {
 
         // Record the latest desired state; schedule one flush if none pending.
         let delay = {
-            let mut t = self.inner.throttle.lock().unwrap();
+            let mut t = self.inner.throttle.lock_recover();
             t.pending = Some(update);
             if t.flush_scheduled {
                 return; // an in-flight flush will pick up the latest pending state
@@ -148,7 +149,7 @@ impl ApnsManager {
                 tokio::time::sleep(delay).await;
             }
             let update = {
-                let mut t = inner.throttle.lock().unwrap();
+                let mut t = inner.throttle.lock_recover();
                 t.flush_scheduled = false;
                 t.last_sent = Some(Instant::now());
                 t.pending.take()
@@ -177,7 +178,7 @@ impl ApnsInner {
     /// Actually send the update to every registered token.
     async fn do_send(&self, update: TimerUpdate) {
         let tokens: Vec<String> = {
-            let guard = self.push_tokens.lock().unwrap();
+            let guard = self.push_tokens.lock_recover();
             if guard.is_empty() {
                 tracing::info!("APNS: no push tokens registered, skipping");
                 return;
@@ -246,7 +247,7 @@ impl ApnsInner {
         }
 
         if !stale_tokens.is_empty() {
-            let mut guard = self.push_tokens.lock().unwrap();
+            let mut guard = self.push_tokens.lock_recover();
             for t in stale_tokens {
                 guard.remove(&t);
             }

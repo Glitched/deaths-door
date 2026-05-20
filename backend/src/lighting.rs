@@ -13,6 +13,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serialport::{DataBits, Parity, SerialPort, SerialPortType, StopBits};
 
+use crate::lock::LockExt;
+
 const DMX_BAUD: u32 = 250_000;
 const FTDI_VID: u16 = 0x0403;
 
@@ -191,11 +193,11 @@ impl LightingManager {
     }
 
     pub fn connected(&self) -> bool {
-        self.inner.lock().unwrap().controller.is_some()
+        self.inner.lock_recover().controller.is_some()
     }
 
     pub fn status(&self) -> LightingStatus {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock_recover();
         let connected = inner.controller.is_some();
         LightingStatus {
             connected,
@@ -225,22 +227,26 @@ impl LightingManager {
     }
 
     pub fn set_channel(&self, fixture_id: i64, channel: i64, value: i64) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_recover();
         let Some(controller) = inner.controller.as_mut() else {
             return;
         };
         match Self::fixture_start(fixture_id) {
-            Some((start, true)) => {
-                // Channels 1-11 map to offsets 0-10.
+            // Channels 1-11 map to offsets 0-10; guard the range so the
+            // `channel - 1` offset can't underflow on a bad path param.
+            Some((start, true)) if (1..=11).contains(&channel) => {
                 controller.set_channel(start + (channel as usize - 1), value);
                 controller.render();
+            }
+            Some((_, true)) => {
+                tracing::warn!("DMX channel out of range (1-11): {channel}")
             }
             _ => tracing::warn!("Invalid fixture for channel control: {fixture_id}"),
         }
     }
 
     pub fn set_position(&self, fixture_id: i64, pan: i64, tilt: i64, fine: bool) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_recover();
         let Some(controller) = inner.controller.as_mut() else {
             return;
         };
@@ -252,7 +258,7 @@ impl LightingManager {
     }
 
     pub fn blackout(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_recover();
         let Some(controller) = inner.controller.as_mut() else {
             return;
         };
@@ -264,14 +270,13 @@ impl LightingManager {
 
     pub fn has_position(&self, player_num: i64) -> bool {
         self.inner
-            .lock()
-            .unwrap()
+            .lock_recover()
             .positions
             .contains_key(&player_num)
     }
 
     pub fn save_player_position(&self, player_num: i64, pan: i64, tilt: i64) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_recover();
         inner.positions.insert(
             player_num,
             PlayerPosition {
@@ -286,11 +291,11 @@ impl LightingManager {
     }
 
     pub fn get_all_positions(&self) -> HashMap<i64, PlayerPosition> {
-        self.inner.lock().unwrap().positions.clone()
+        self.inner.lock_recover().positions.clone()
     }
 
     pub fn spotlight_player(&self, player_num: i64, brightness: i64, fixture_id: i64) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_recover();
         let position = match inner.positions.get(&player_num).copied() {
             Some(p) => p,
             None => {
@@ -323,7 +328,7 @@ impl LightingManager {
             return;
         }
 
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_recover();
         let Some(controller) = inner.controller.as_mut() else {
             return;
         };
