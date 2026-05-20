@@ -5,6 +5,8 @@ export interface TimerState {
 
 export interface CharacterOut {
   name: string;
+  description: string;
+  icon_path: string;
   alignment: string;
 }
 

@@ -138,3 +138,8 @@
     @apply font-sans;
     }
 }
+
+@keyframes colorShift {
+  0% { color: #FF6262; }
+  100% { color: #62BDFF; }
+}

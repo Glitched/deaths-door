@@ -11,21 +11,28 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: backend-rust
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
+      - uses: dtolnay/rust-toolchain@1.94.0
+        with:
+          components: rustfmt, clippy
 
-      - name: Lint
-        run: uv run ruff check src/
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend-rust
+
+      # Native deps for the `serialport` (libudev) and `rodio`/cpal (ALSA) crates.
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev libasound2-dev pkg-config
 
       - name: Format check
-        run: uv run ruff format --check src/
+        run: cargo fmt --check
 
-      - name: Type check
-        run: uv run pyright src/
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Test
-        run: uv run pytest
+        run: cargo test

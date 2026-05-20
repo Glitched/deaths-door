@@ -10,27 +10,30 @@ I'm learning jj - when using jj commands, please explain what the equivalent git
 
 ## Development Commands
 
-### Backend (Python/FastAPI)
+### Backend (Rust / axum)
 ```bash
-# Setup (uv manages Python and dependencies)
-cd backend
-uv sync
+cd backend-rust
 
-# Run development server
+# Run development server (serves on 0.0.0.0:8000)
 make run
 # or with sample game data:
 make sample
+# or directly:
+cargo run
+SAMPLE_GAME=true cargo run
 
 # Testing
 make test
-# or directly: uv run pytest
-uv run pytest --cov=deaths_door --cov-report=html
+# or directly:
+cargo test
 
-# Linting and type checking
-uv run ruff check src/
-uv run ruff format src/
-uv run pyright src/
+# Linting and formatting
+cargo fmt
+cargo fmt --check
+cargo clippy --all-targets
 ```
+
+Useful env vars: `PORT` (default 8000), `DATABASE_PATH` (default `games.db`), `SAMPLE_GAME=true`, `RUST_LOG` (e.g. `info`, `debug`).
 
 ### Frontend (Vite + React)
 ```bash
@@ -46,35 +49,35 @@ npm run lint
 make run         # run backend
 make test        # run backend tests
 make sample      # run backend with sample game
-make build       # build frontend into backend/static/app/
+make build       # build frontend into backend-rust/static/app/
 ```
 
 ## Architecture Overview
 
-This is a **Blood on the Clocktower game management system** with streaming overlay. The backend is a FastAPI application using **event sourcing** for game state, while the frontend is a React overlay projected on a wall during games. An iOS app serves as the primary storyteller interface.
+This is a **Blood on the Clocktower game management system** with streaming overlay. The backend is an axum application using **event sourcing** for game state, while the frontend is a React overlay projected on a wall during games. An iOS app serves as the primary storyteller interface.
 
 ### Core Components
 
-**Event Sourcing**: All game state mutations are persisted as events to SQLite. A pure `apply(state, event) -> state` function rebuilds state from events. This enables game reload, rewind (undo), and forking (branching alternate timelines).
+**Event Sourcing**: All game state mutations are persisted as events to SQLite. A pure `apply(state, event) -> GameState` function rebuilds state from events. This enables game reload, rewind (undo), and forking (branching alternate timelines).
 
-**Game State** (`game_state.py`): Frozen Pydantic models (`GameState`, `PlayerState`) — fully immutable. Derived properties include `living_player_count`, `execution_threshold`, and `dead_players_with_vote`. Updated via `GameManager.dispatch()` which atomically applies, persists, and notifies SSE subscribers.
+**Game State** (`game_state.rs`): Immutable `GameState`/`PlayerState` structs (owned, cloned on update). Derived methods include `living_player_count()`, `execution_threshold()`, and `get_dead_players_with_vote()`. Updated via `GameManager::dispatch()` which atomically applies, persists, and notifies SSE subscribers.
 
-**Event Store** (`event_store.py`): SQLite-backed persistence. Single `events` table with `game_id`, `sequence`, `event_type`, and JSON `payload`. Supports `get_events()`, `delete_after_sequence()` (rewind), and `fork_game()`.
+**Events** (`events.rs`): `EventPayload` is an internally-tagged serde enum (`#[serde(tag = "type")]`) — the compile-time-exhaustive equivalent of the original Pydantic discriminated union. Tag values match the on-disk JSON exactly.
 
-**Character System**: Hierarchical character classes (Townsfolk/Outsiders/Minions/Demons/Travelers) defined in `characters/` and `travelers/` directories organized by script.
+**Event Store** (`event_store.rs`): `rusqlite`-backed persistence. Single `events` table with `game_id`, `sequence`, `event_type`, and JSON `payload`. Supports `get_events()`, `delete_after_sequence()` (rewind), and `fork_game()`.
 
-**Script System**: Game variants (like "Trouble Brewing") define character pools, night sequences, and game rules. Scripts are registered in `scripts/registry.py`.
+**Character/Script System**: Character, traveler, and night-step definitions are embedded from `data/botc_data.json` (`include_str!`) and parsed into `Script`/`Character` structs. `scripts.rs` is the registry (`get_script_by_name`); only "Trouble Brewing" has data wired up.
 
-**Real-time Updates**: `GET /game/stream` provides Server-Sent Events (SSE) for instant state updates. REST endpoints remain available for polling (used by the iOS app).
+**Real-time Updates**: `GET /game/stream` provides Server-Sent Events (SSE) via a `tokio::sync::broadcast` channel. REST endpoints remain available for polling (used by the iOS app).
 
-**API Architecture**: RESTful endpoints organized by domain (game, players, characters, scripts, sounds, timer) with Pydantic models for serialization.
+**API Architecture**: RESTful endpoints in `routes/` organized by domain (game, players, characters, scripts, sounds, timer, lights). Shared state is an `AppState` injected via axum's `State` extractor. Endpoints/DTOs are annotated with `utoipa`; `GET /openapi.json` serves the full OpenAPI 3.1 spec (with a usage guide in `info.description`).
 
-**DMX Lighting**: Optional serial connection to OpenDMX/FTDI USB interfaces for moving head lights, fog machine, and game event lighting scenes.
+**DMX Lighting** (`lighting.rs`): Optional serial connection (`serialport`) to OpenDMX/FTDI USB interfaces for moving head lights, fog machine, and game event lighting scenes. **Sound** (`sound.rs`) uses `rodio`; **APNS** (`apns.rs`) uses `reqwest` + `jsonwebtoken` (ES256). All degrade gracefully when hardware/keys are absent.
 
 ### Key Data Flow
 
 1. **Game Creation**: Script selected → Game state initialized → Roles manually included via API → Ready for players
-2. **Mutations**: Route handler calls `game_manager.dispatch(event)` → `apply()` produces new immutable state → Event persisted to SQLite → SSE subscribers notified
+2. **Mutations**: Route handler calls `manager.dispatch(event)` → `apply()` produces new immutable state → Event persisted to SQLite → SSE subscribers notified via broadcast
 3. **Frontend**: React overlay connects via `EventSource` to `/game/stream` → Receives full state on connect and after every mutation → Renders timer, player list, vote info
 
 ### Important Game Setup Workflow
@@ -97,39 +100,33 @@ This is a **Blood on the Clocktower game management system** with streaming over
 
 ### Environment
 
-- Python 3.14+ with uv for dependency management
+- Rust stable (1.94+); `cargo` manages dependencies
 - Node.js 25+ with mise for version management
 - Set `SAMPLE_GAME=true` to load sample game data on startup
-- **Optional:** DMX USB interface for lighting effects
+- **Optional:** DMX USB interface for lighting effects; APNS key at `backend-rust/keys/AuthKey_*.p8`
 - Font "Help Me" for timer overlay (falls back to Impact)
+
+### Source-of-truth note
+
+`data/botc_data.json` was originally dumped from the retired Python backend and is now the canonical source for character/traveler/night-step definitions. Edit it directly to change game data.
 
 ### Testing Strategy
 
-Backend tests in `src/deaths_door/tests/` using pytest with anyio backend. 210+ tests covering event sourcing, API endpoints, game state, and persistence.
+Tests live in `backend-rust/tests/`: `event_sourcing.rs` (unit tests for `apply`/`replay`/store) and `api.rs` (HTTP integration tests through the real router via `tower::ServiceExt::oneshot`, backed by an in-memory store). `tests/common/mod.rs` has helpers:
 
-**Test Helpers Available** in `tests/helpers.py`:
-
-```python
-from .helpers import get_test_client, setup_game_with_roles, add_test_players, GameTestCase
-
-# API Tests - returns list[PlayerOut] (Pydantic models)
-async with get_test_client() as client:
-    await setup_game_with_roles(client)
-    players = await add_test_players(client, ["Alice", "Bob"])
-    assert players[0].name == "Alice"
-
-# Unit Tests - uses immutable GameState + apply()
-test_case = GameTestCase(roles=["Imp", "Chef", "Monk"])
-test_case.add_players_with_roles([("Alice", "Imp"), ("Bob", "Chef")])
-assert test_case.state.living_player_count == 2
+```rust
+let app = test_app();                       // in-memory-backed router
+new_game(&app).await;
+// Add one role then one player -> deterministic assignment (only role available).
+let alice = add_player_with_role(&app, "Alice", "Imp").await;
+let (status, body) = get(&app, "/game/state").await;
 ```
 
 ### Code Standards
 
-- **Backend**: Uses Ruff for linting/formatting (line-length 120), Pyright for type checking (strict mode), follows PEP 8 naming
-- **Frontend**: Uses ESLint, TypeScript strict mode, Tailwind v4 + shadcn/ui
-- **Type Safety**: Frozen Pydantic models throughout. Zero type errors with strict Pyright checking.
-- **Immutability**: Game state is fully immutable. All mutations go through `dispatch()` which produces a new state via the pure `apply()` function.
+- **Backend**: `cargo fmt` (rustfmt) and `cargo clippy` clean (CI runs `clippy -D warnings`); proper error enums (`StoreError`, `GameError`) via `thiserror`, mapped to HTTP status by `From<…> for AppError`.
+- **Frontend**: ESLint, TypeScript strict mode, Tailwind v4 + shadcn/ui
+- **Immutability**: Game state is effectively immutable — all mutations go through `dispatch()`, which produces a new state via the pure `apply()` function.
 
 ### API Response Format
 
@@ -140,16 +137,22 @@ Player data is returned with nested character objects:
   "character": {
     "name": "Imp",
     "description": "...",
-    "alignment": "evil"
+    "icon_path": "imp.png",
+    "alignment": "evil",
+    "category": "demon"
   },
   "is_alive": true,
+  "has_used_dead_vote": false,
   "status_effects": ["Poisoned"]
 }
 ```
 
+Errors use a FastAPI-style `{"detail": "..."}` body.
+
 ### Error Handling
 
-- **400 Bad Request**: Validation errors (duplicate players, invalid input)
-- **404 Not Found**: Resource not found (player, role, etc.)
+- **400 Bad Request**: Validation errors (duplicate players, invalid input, invalid rewind/fork version, unknown game id)
+- **404 Not Found**: Resource not found (player, role, script, scene, etc.)
 - **408 Request Timeout**: Role reveal timeout
+- **409 Conflict**: Duplicate player name
 - Status effect removal is safe (no error if effect doesn't exist)

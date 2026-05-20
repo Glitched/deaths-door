@@ -1,9 +1,11 @@
+import { useEffect } from "react";
 import { TimerDisplay } from "@/components/timer/TimerDisplay";
 import { PlayerList } from "@/components/players/PlayerList";
 import { useGameState } from "@/hooks/useGameState";
 import { isNightPhase } from "@/api/types";
 
 export function OverlayPage() {
+  useEffect(() => { document.title = "Death's Door"; }, []);
   const { state: gameState, status } = useGameState();
   const night = gameState ? isNightPhase(gameState) : false;
 

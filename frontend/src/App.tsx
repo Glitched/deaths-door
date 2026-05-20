@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { OverlayPage } from "@/pages/OverlayPage";
+import { RevealPage } from "@/pages/RevealPage";
 
 function HomePage() {
   return (
@@ -15,6 +16,7 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/overlay" element={<OverlayPage />} />
+        <Route path="/reveal" element={<RevealPage />} />
       </Routes>
     </BrowserRouter>
   );

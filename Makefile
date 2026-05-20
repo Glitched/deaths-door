@@ -1,15 +1,15 @@
 .PHONY: run test sample build
 
 run:
-	cd backend && uv run uvicorn src.deaths_door.main:app --reload --host 0.0.0.0
+	cd backend-rust && cargo run
 
 test:
-	cd backend && uv run pytest
+	cd backend-rust && cargo test
 
 sample:
-	cd backend && SAMPLE_GAME=true uv run uvicorn src.deaths_door.main:app --reload --host 0.0.0.0
+	cd backend-rust && SAMPLE_GAME=true cargo run
 
 build:
 	cd frontend && npm run build
-	rm -rf backend/static/app
-	cp -r frontend/dist backend/static/app
+	rm -rf backend-rust/static/app
+	cp -r frontend/dist backend-rust/static/app
