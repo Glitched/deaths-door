@@ -2,12 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Version Control
-
-**Use `jj` (Jujutsu) instead of `git` for all version control operations.** This repo is colocated, so both tools see the same commits, but prefer jj commands.
-
-I'm learning jj - when using jj commands, please explain what the equivalent git command would be so I can build mental mappings.
-
 ## Development Commands
 
 ### Backend (Rust / axum)
@@ -39,7 +33,7 @@ Useful env vars: `PORT` (default 8000), `DATABASE_PATH` (default `games.db`), `S
 ```bash
 cd frontend
 npm install
-npm run dev      # dev server at :5173 with proxy to backend
+npm run dev      # dev server at :5173 (proxies /api/* to backend:8000)
 npm run build
 npm run lint
 ```
@@ -54,7 +48,7 @@ make build       # build frontend into backend/static/app/
 
 ## Architecture Overview
 
-This is a **Blood on the Clocktower game management system** with streaming overlay. The backend is an axum application using **event sourcing** for game state, while the frontend is a React overlay projected on a wall during games. An iOS app serves as the primary storyteller interface.
+This is a **Blood on the Clocktower game management system** with a real-time overlay projected on the wall during in-person games. The backend is an axum application using **event sourcing** for game state; the web frontend is a React overlay. An iOS app is the primary storyteller interface.
 
 ### Core Components
 
@@ -62,7 +56,7 @@ This is a **Blood on the Clocktower game management system** with streaming over
 
 **Game State** (`game_state.rs`): Immutable `GameState`/`PlayerState` structs (owned, cloned on update). Derived methods include `living_player_count()`, `execution_threshold()`, and `get_dead_players_with_vote()`. Updated via `GameManager::dispatch()` which atomically applies, persists, and notifies SSE subscribers.
 
-**Events** (`events.rs`): `EventPayload` is an internally-tagged serde enum (`#[serde(tag = "type")]`) — the compile-time-exhaustive equivalent of the original Pydantic discriminated union. Tag values match the on-disk JSON exactly.
+**Events** (`events.rs`): `EventPayload` is an internally-tagged serde enum (`#[serde(tag = "type")]`); the `type` tag values and JSON shape match the on-disk event log exactly. The pure `apply(state, event) -> GameState` and `replay()` functions live in `apply.rs`.
 
 **Event Store** (`event_store.rs`): `rusqlite`-backed persistence. Single `events` table with `game_id`, `sequence`, `event_type`, and JSON `payload`. Supports `get_events()`, `delete_after_sequence()` (rewind), and `fork_game()`.
 
@@ -73,6 +67,8 @@ This is a **Blood on the Clocktower game management system** with streaming over
 **API Architecture**: RESTful endpoints in `routes/` organized by domain (game, players, characters, scripts, sounds, timer, lights). Shared state is an `AppState` injected via axum's `State` extractor. Endpoints/DTOs are annotated with `utoipa`; `GET /openapi.json` serves the full OpenAPI 3.1 spec (with a usage guide in `info.description`).
 
 **DMX Lighting** (`lighting.rs`): Optional serial connection (`serialport`) to OpenDMX/FTDI USB interfaces for moving head lights, fog machine, and game event lighting scenes. **Sound** (`sound.rs`) uses `rodio`; **APNS** (`apns.rs`) uses `reqwest` + `jsonwebtoken` (ES256). All degrade gracefully when hardware/keys are absent.
+
+**Served pages** (`app.rs`): besides the JSON API, the backend serves the built React app from `static/app` (fallback route — `/overlay` is the projector overlay), a standalone role-reveal screen at `/reveal` (`static/role.html`), and an interactive dev console at `/debug` (`static/debug.html`). The `/debug` console subscribes to the SSE stream and exposes buttons that drive game state (night phase, reveals, etc.) — handy for testing without the iOS app. `/static/*` serves the remaining assets.
 
 ### Key Data Flow
 
@@ -101,7 +97,7 @@ This is a **Blood on the Clocktower game management system** with streaming over
 ### Environment
 
 - Rust stable (1.94+); `cargo` manages dependencies
-- Node.js 25+ with mise for version management
+- Node.js via mise (pinned to `latest`)
 - Set `SAMPLE_GAME=true` to load sample game data on startup
 - **Optional:** DMX USB interface for lighting effects; APNS key at `backend/keys/AuthKey_*.p8`
 - Font "Help Me" for timer overlay (falls back to Impact)
