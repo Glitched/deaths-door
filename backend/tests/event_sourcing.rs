@@ -457,3 +457,27 @@ fn store_fork_copies_events_to_new_game() {
     let ids = store.get_all_game_ids().unwrap();
     assert_eq!(ids.len(), 2);
 }
+
+#[test]
+fn store_most_recent_game_id_follows_insertion_order() {
+    let store = EventStore::in_memory().unwrap();
+    assert_eq!(store.get_most_recent_game_id().unwrap(), None);
+
+    // Fixed IDs where the game appended LAST sorts FIRST by UUID string, so
+    // ordering by game_id (the old resume behavior) would pick the wrong one.
+    // Resume must follow insertion order.
+    let older = Uuid::from_u128(u128::MAX); // lexicographically largest
+    let newer = Uuid::from_u128(1); // lexicographically smallest
+    for game_id in [older, newer] {
+        let e = GameEvent::new(
+            game_id,
+            0,
+            EventPayload::GameCreated {
+                script_name: "trouble_brewing".to_string(),
+            },
+        );
+        store.append(&e).unwrap();
+    }
+
+    assert_eq!(store.get_most_recent_game_id().unwrap(), Some(newer));
+}

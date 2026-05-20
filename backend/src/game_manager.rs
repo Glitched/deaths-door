@@ -96,9 +96,9 @@ impl GameManager {
         if sample_game_enabled() {
             self.create_sample_game().await?;
         } else {
-            let ids = self.inner.lock().await.store.get_all_game_ids()?;
-            if let Some(last) = ids.last().copied() {
-                self.load_game(last).await?;
+            let most_recent = self.inner.lock().await.store.get_most_recent_game_id()?;
+            if let Some(game_id) = most_recent {
+                self.load_game(game_id).await?;
             } else {
                 self.create_game("trouble_brewing").await?;
             }

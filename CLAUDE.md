@@ -8,13 +8,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 cd backend
 
-# Run development server (serves on 0.0.0.0:8000)
+# Run development server (serves on 0.0.0.0:8000; resumes the most recent game)
 make run
-# or with sample game data:
+# resume the most recent saved game (alias for run)
+make resume
+# or with a fresh sample game:
 make sample
 # or directly:
 cargo run
 SAMPLE_GAME=true cargo run
+
+make help          # list all targets with descriptions (the default target)
 
 # Testing
 make test
@@ -40,9 +44,11 @@ npm run lint
 
 ### Root level
 ```bash
-make run         # run backend
+make help        # list available targets (the default target)
+make run         # run backend (resumes the most recent game)
+make resume      # resume the most recent saved game (alias for run)
 make test        # run backend tests
-make sample      # run backend with sample game
+make sample      # run backend with a fresh sample game
 make build       # build frontend into backend/static/app/
 ```
 
@@ -98,7 +104,8 @@ This is a **Blood on the Clocktower game management system** with a real-time ov
 
 - Rust stable (1.94+); `cargo` manages dependencies
 - Node.js via mise (pinned to `latest`)
-- Set `SAMPLE_GAME=true` to load sample game data on startup
+- On startup the server resumes the most recently played game (by event insertion order), or creates an empty game if the database is empty
+- Set `SAMPLE_GAME=true` to load fresh sample game data on startup instead
 - **Optional:** DMX USB interface for lighting effects; APNS key at `backend/keys/AuthKey_*.p8`
 - Font "Help Me" for timer overlay (falls back to Impact)
 

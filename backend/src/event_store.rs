@@ -5,7 +5,7 @@
 //! the other.
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use uuid::Uuid;
 
 use crate::error::StoreError;
@@ -111,6 +111,22 @@ impl EventStore {
             |row| row.get(0),
         )?;
         Ok(result.unwrap_or(-1))
+    }
+
+    /// The `game_id` of the most recently appended event (by insertion order),
+    /// or `None` if the store is empty. Used to resume the last-played game on
+    /// boot — note that ordering by `game_id` would be arbitrary (v4 UUIDs are
+    /// random), so this follows `rowid` (insertion order) instead.
+    pub fn get_most_recent_game_id(&self) -> StoreResult<Option<Uuid>> {
+        let id: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT game_id FROM events ORDER BY rowid DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(id.map(|s| Uuid::parse_str(&s)).transpose()?)
     }
 
     /// All distinct game IDs in the store, ordered by their string form.
