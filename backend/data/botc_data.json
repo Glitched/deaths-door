@@ -403,6 +403,923 @@
           "show_when_dead": false
         }
       ]
+    },
+    "sects_and_violets": {
+      "characters": [
+        {
+          "name": "Clockmaker",
+          "description": "You start knowing how many steps from the Demon to its nearest Minion.",
+          "icon_path": "clockmaker.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": []
+        },
+        {
+          "name": "Dreamer",
+          "description": "Each night, choose a player (not yourself or Travellers): you learn 1 good & 1 evil character, 1 of which is correct.",
+          "icon_path": "dreamer.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": []
+        },
+        {
+          "name": "Snake Charmer",
+          "description": "Each night, choose an alive player: a chosen Demon swaps characters & alignments with you & is then poisoned.",
+          "icon_path": "snakecharmer.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Poisoned"
+          ]
+        },
+        {
+          "name": "Mathematician",
+          "description": "Each night, you learn how many players' abilities worked abnormally (since dawn) due to another character's ability.",
+          "icon_path": "mathematician.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Abnormal"
+          ]
+        },
+        {
+          "name": "Flowergirl",
+          "description": "Each night*, you learn if a Demon voted today.",
+          "icon_path": "flowergirl.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Demon Voted",
+            "Demon Not Voted"
+          ]
+        },
+        {
+          "name": "Town Crier",
+          "description": "Each night*, you learn if a Minion nominated today.",
+          "icon_path": "towncrier.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Minion Nominated",
+            "Minion Not Nominated"
+          ]
+        },
+        {
+          "name": "Oracle",
+          "description": "Each night*, you learn how many dead players are evil.",
+          "icon_path": "oracle.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": []
+        },
+        {
+          "name": "Savant",
+          "description": "Each day, you may visit the Storyteller to learn 2 things in private: 1 is true & 1 is false.",
+          "icon_path": "savant.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": []
+        },
+        {
+          "name": "Seamstress",
+          "description": "Once per game, at night, choose 2 players (not yourself): you learn if they are the same alignment.",
+          "icon_path": "seamstress.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "No Ability"
+          ]
+        },
+        {
+          "name": "Philosopher",
+          "description": "Once per game, at night, choose a good character: gain that ability. If this character is in play, they are drunk.",
+          "icon_path": "philosopher.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Drunk",
+            "Is the Philosopher"
+          ]
+        },
+        {
+          "name": "Artist",
+          "description": "Once per game, during the day, privately ask the Storyteller any yes/no question.",
+          "icon_path": "artist.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "No Ability"
+          ]
+        },
+        {
+          "name": "Juggler",
+          "description": "On your 1st day, publicly guess up to 5 players' characters. That night, you learn how many you got correct.",
+          "icon_path": "juggler.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Correct"
+          ]
+        },
+        {
+          "name": "Sage",
+          "description": "If the Demon kills you, you learn that it is 1 of 2 players.",
+          "icon_path": "sage.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": []
+        },
+        {
+          "name": "Mutant",
+          "description": "If you are \"mad\" about being an Outsider, you might be executed.",
+          "icon_path": "mutant.png",
+          "alignment": "good",
+          "category": "outsider",
+          "status_effects": []
+        },
+        {
+          "name": "Sweetheart",
+          "description": "When you die, 1 player is drunk from now on.",
+          "icon_path": "sweetheart.png",
+          "alignment": "good",
+          "category": "outsider",
+          "status_effects": [
+            "Drunk"
+          ]
+        },
+        {
+          "name": "Barber",
+          "description": "If you died today or tonight, the Demon may choose 2 players (not another Demon) to swap characters.",
+          "icon_path": "barber.png",
+          "alignment": "good",
+          "category": "outsider",
+          "status_effects": [
+            "Haircuts Tonight"
+          ]
+        },
+        {
+          "name": "Klutz",
+          "description": "When you learn that you died, publicly choose 1 alive player: if they are evil, your team loses.",
+          "icon_path": "klutz.png",
+          "alignment": "good",
+          "category": "outsider",
+          "status_effects": []
+        },
+        {
+          "name": "Evil Twin",
+          "description": "You & an opposing player know each other. If the good player is executed, evil wins. Good can't win if you both live.",
+          "icon_path": "eviltwin.png",
+          "alignment": "evil",
+          "category": "minion",
+          "status_effects": [
+            "Twin"
+          ]
+        },
+        {
+          "name": "Witch",
+          "description": "Each night, choose a player: if they nominate tomorrow, they die. If just 3 players live, you lose this ability.",
+          "icon_path": "witch.png",
+          "alignment": "evil",
+          "category": "minion",
+          "status_effects": [
+            "Cursed"
+          ]
+        },
+        {
+          "name": "Cerenovus",
+          "description": "Each night, choose a player & a good character: they are \"mad\" they are this character tomorrow, or might be executed.",
+          "icon_path": "cerenovus.png",
+          "alignment": "evil",
+          "category": "minion",
+          "status_effects": [
+            "Mad"
+          ]
+        },
+        {
+          "name": "Pit-Hag",
+          "description": "Each night*, choose a player & a character they become (if not in play). If a Demon is made, deaths tonight are arbitrary.",
+          "icon_path": "pit-hag.png",
+          "alignment": "evil",
+          "category": "minion",
+          "status_effects": []
+        },
+        {
+          "name": "Fang Gu",
+          "description": "Each night*, choose a player: they die. The 1st Outsider this kills becomes an evil Fang Gu & you die instead. [+1 Outsider]",
+          "icon_path": "fanggu.png",
+          "alignment": "evil",
+          "category": "demon",
+          "status_effects": [
+            "Dead",
+            "Once"
+          ]
+        },
+        {
+          "name": "Vigormortis",
+          "description": "Each night*, choose a player: they die. Minions you kill keep their ability & poison 1 Townsfolk neighbor. [-1 Outsider]",
+          "icon_path": "vigormortis.png",
+          "alignment": "evil",
+          "category": "demon",
+          "status_effects": [
+            "Dead",
+            "Has Ability",
+            "Poisoned"
+          ]
+        },
+        {
+          "name": "No Dashii",
+          "description": "Each night*, choose a player: they die. Your 2 Townsfolk neighbors are poisoned.",
+          "icon_path": "nodashii.png",
+          "alignment": "evil",
+          "category": "demon",
+          "status_effects": [
+            "Dead",
+            "Poisoned"
+          ]
+        },
+        {
+          "name": "Vortox",
+          "description": "Each night*, choose a player: they die. Townsfolk abilities yield false info. Each day, if no-one is executed, evil wins.",
+          "icon_path": "vortox.png",
+          "alignment": "evil",
+          "category": "demon",
+          "status_effects": [
+            "Dead"
+          ]
+        }
+      ],
+      "travelers": [],
+      "first_night_steps": [
+        {
+          "name": "Dusk",
+          "description": "Check that all eyes are closed. Some Travellers & Fabled act.",
+          "always_show": true,
+          "show_when_dead": false
+        },
+        {
+          "name": "Philosopher",
+          "description": "The Philosopher might choose a good character. If they did, give them that ability; if that character is in play, that player is drunk.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Minion Info",
+          "description": "If there are 7 or more players, wake all Minions: Show the THIS IS THE DEMON token. Point to the Demon.",
+          "always_show": true,
+          "show_when_dead": false
+        },
+        {
+          "name": "Demon Info",
+          "description": "If there are 7 or more players, wake the Demon: Show the THESE ARE YOUR MINIONS token. Point to all Minions. Show the THESE CHARACTERS ARE NOT IN PLAY token. Show 3 not-in-play good character tokens.",
+          "always_show": true,
+          "show_when_dead": false
+        },
+        {
+          "name": "Snake Charmer",
+          "description": "The Snake Charmer points to a player. If that player is the Demon, swap the Demon's and Snake Charmer's characters and alignments, wake each to show their new role and alignment; the new Snake Charmer is poisoned.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Evil Twin",
+          "description": "Wake the Evil Twin and their twin and confirm they acknowledge each other. Show the twin the Evil Twin token and point to the Evil Twin. Show the Evil Twin the twin's character token and point to the twin.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Witch",
+          "description": "The Witch points to a player. If that player nominates tomorrow, they die immediately.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Cerenovus",
+          "description": "The Cerenovus chooses a player and a good character. Wake the target and show THIS CHARACTER SELECTED YOU, the Cerenovus token, and the madness character.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Clockmaker",
+          "description": "Show the number of steps from the Demon to its nearest Minion.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Dreamer",
+          "description": "The Dreamer points to a player. Show 1 good and 1 evil character token; one of these is correct.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Seamstress",
+          "description": "The Seamstress either signals 'no', or points to two other players; if they chose players, nod 'yes' or shake 'no' for whether they are the same alignment.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Mathematician",
+          "description": "Show the hand signal for the number (0, 1, 2, ...) of players whose ability malfunctioned due to another ability.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Dawn",
+          "description": "Wait a few seconds. Call for eyes open.",
+          "always_show": true,
+          "show_when_dead": false
+        }
+      ],
+      "other_night_steps": [
+        {
+          "name": "Dusk",
+          "description": "Check that all eyes are closed. Some Travellers & Fabled act.",
+          "always_show": true,
+          "show_when_dead": false
+        },
+        {
+          "name": "Philosopher",
+          "description": "The Philosopher might choose a good character. If they did, give them that ability; if that character is in play, that player is drunk.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Snake Charmer",
+          "description": "The Snake Charmer points to a player. If that player is the Demon, swap the Demon's and Snake Charmer's characters and alignments, wake each to show their new role and alignment; the new Snake Charmer is poisoned.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Witch",
+          "description": "If 4 or more players are alive, the Witch points to a player. If that player nominates tomorrow, they die immediately.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Cerenovus",
+          "description": "The Cerenovus chooses a player and a good character. Wake the target and show THIS CHARACTER SELECTED YOU, the Cerenovus token, and the madness character.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Pit-Hag",
+          "description": "The Pit-Hag points to a player and a character on the sheet. If that character is not in play, wake that player and show the YOU ARE card and the new character token. If it is in play, nothing happens.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Fang Gu",
+          "description": "The Fang Gu points to a player; that player dies. Or, if that player was an Outsider and no other Fang Gu is in play, the Fang Gu dies instead and the chosen player becomes an evil Fang Gu - wake them and show YOU ARE, the Fang Gu token, then YOU ARE EVIL.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "No Dashii",
+          "description": "The No Dashii points to a player. That player dies.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Vortox",
+          "description": "The Vortox points to a player. That player dies.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Vigormortis",
+          "description": "The Vigormortis points to a player; that player dies. If a Minion, they keep their ability and one of their Townsfolk neighbors is poisoned.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Barber",
+          "description": "If the Barber died today, wake the Demon and show THIS CHARACTER SELECTED YOU and the Barber token. The Demon either signals 'no' or points to 2 players; if chosen, swap their character tokens and wake each to show their new character.",
+          "always_show": false,
+          "show_when_dead": true
+        },
+        {
+          "name": "Sweetheart",
+          "description": "Choose a player to be drunk from now on.",
+          "always_show": false,
+          "show_when_dead": true
+        },
+        {
+          "name": "Sage",
+          "description": "If the Sage was killed by a Demon, point to two players, one of which is that Demon.",
+          "always_show": false,
+          "show_when_dead": true
+        },
+        {
+          "name": "Dreamer",
+          "description": "The Dreamer points to a player. Show 1 good and 1 evil character token; one of these is correct.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Flowergirl",
+          "description": "Nod 'yes' or shake 'no' for whether the Demon voted today, then update the Demon Voted / Demon Not Voted marker.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Town Crier",
+          "description": "Give a 'yes' or 'no' for whether a Minion nominated today.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Oracle",
+          "description": "Show the hand signal for the number (0, 1, 2, ...) of dead evil players.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Seamstress",
+          "description": "If the Seamstress has not yet used their ability, they either signal 'no', or point to two other players; if they chose players, nod 'yes' or shake 'no' for whether they are the same alignment.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Juggler",
+          "description": "If today was the Juggler's first day, show the hand signal for the number (0, 1, 2, ...) of correct guesses, then remove the markers.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Mathematician",
+          "description": "Show the hand signal for the number (0, 1, 2, ...) of players whose ability malfunctioned due to another ability.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Dawn",
+          "description": "Wait a few seconds. Call for eyes open & immediately say who died.",
+          "always_show": true,
+          "show_when_dead": false
+        }
+      ]
+    },
+    "bad_moon_rising": {
+      "characters": [
+        {
+          "name": "Grandmother",
+          "description": "You start knowing a good player & their character. If the Demon kills them, you die too.",
+          "icon_path": "grandmother.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Grandchild",
+            "Dead"
+          ]
+        },
+        {
+          "name": "Sailor",
+          "description": "Each night, choose an alive player: either you or they are drunk until dusk. You can't die.",
+          "icon_path": "sailor.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Drunk"
+          ]
+        },
+        {
+          "name": "Chambermaid",
+          "description": "Each night, choose 2 alive players (not yourself): you learn how many woke tonight due to their ability.",
+          "icon_path": "chambermaid.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": []
+        },
+        {
+          "name": "Exorcist",
+          "description": "Each night*, choose a player (different to last night): the Demon, if chosen, learns who you are then doesn't wake tonight.",
+          "icon_path": "exorcist.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Chosen"
+          ]
+        },
+        {
+          "name": "Innkeeper",
+          "description": "Each night*, choose 2 players: they can't die tonight, but 1 is drunk until dusk.",
+          "icon_path": "innkeeper.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Safe",
+            "Drunk"
+          ]
+        },
+        {
+          "name": "Gambler",
+          "description": "Each night*, choose a player & guess their character: if you guess wrong, you die.",
+          "icon_path": "gambler.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Dead"
+          ]
+        },
+        {
+          "name": "Gossip",
+          "description": "Each day, you may make a public statement. Tonight, if it was true, a player dies.",
+          "icon_path": "gossip.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Dead"
+          ]
+        },
+        {
+          "name": "Courtier",
+          "description": "Once per game, at night, choose a character: they are drunk for 3 nights & 3 days.",
+          "icon_path": "courtier.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Drunk 1",
+            "Drunk 2",
+            "Drunk 3",
+            "No Ability"
+          ]
+        },
+        {
+          "name": "Professor",
+          "description": "Once per game, at night*, choose a dead player: if they are a Townsfolk, they are resurrected.",
+          "icon_path": "professor.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Alive",
+            "No Ability"
+          ]
+        },
+        {
+          "name": "Minstrel",
+          "description": "When a Minion dies by execution, all other players (except Travellers) are drunk until dusk tomorrow.",
+          "icon_path": "minstrel.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Everyone Is Drunk"
+          ]
+        },
+        {
+          "name": "Tea Lady",
+          "description": "If both your alive neighbors are good, they can't die.",
+          "icon_path": "tealady.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "Cannot die"
+          ]
+        },
+        {
+          "name": "Pacifist",
+          "description": "Executed good players might not die.",
+          "icon_path": "pacifist.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": []
+        },
+        {
+          "name": "Fool",
+          "description": "The 1st time you die, you don't.",
+          "icon_path": "fool.png",
+          "alignment": "good",
+          "category": "townsfolk",
+          "status_effects": [
+            "No Ability"
+          ]
+        },
+        {
+          "name": "Tinker",
+          "description": "You might die at any time.",
+          "icon_path": "tinker.png",
+          "alignment": "good",
+          "category": "outsider",
+          "status_effects": [
+            "Dead"
+          ]
+        },
+        {
+          "name": "Moonchild",
+          "description": "When you learn that you died, publicly choose 1 alive player. Tonight, if it was a good player, they die.",
+          "icon_path": "moonchild.png",
+          "alignment": "good",
+          "category": "outsider",
+          "status_effects": [
+            "Dead"
+          ]
+        },
+        {
+          "name": "Goon",
+          "description": "Each night, the 1st player to choose you with their ability is drunk until dusk. You become their alignment.",
+          "icon_path": "goon.png",
+          "alignment": "good",
+          "category": "outsider",
+          "status_effects": [
+            "Drunk"
+          ]
+        },
+        {
+          "name": "Lunatic",
+          "description": "You think you are a Demon, but you are not. The Demon knows who you are & who you choose at night.",
+          "icon_path": "lunatic.png",
+          "alignment": "good",
+          "category": "outsider",
+          "status_effects": [
+            "Chosen"
+          ]
+        },
+        {
+          "name": "Godfather",
+          "description": "You start knowing which Outsiders are in play. If 1 died today, choose a player tonight: they die. [-1 or +1 Outsider]",
+          "icon_path": "godfather.png",
+          "alignment": "evil",
+          "category": "minion",
+          "status_effects": [
+            "Dead",
+            "Died Today"
+          ]
+        },
+        {
+          "name": "Devil's Advocate",
+          "description": "Each night, choose a living player (different to last night): if executed tomorrow, they don't die.",
+          "icon_path": "devil'sadvocate.png",
+          "alignment": "evil",
+          "category": "minion",
+          "status_effects": [
+            "Survives Execution"
+          ]
+        },
+        {
+          "name": "Assassin",
+          "description": "Once per game, at night*, choose a player: they die, even if for some reason they could not.",
+          "icon_path": "assassin.png",
+          "alignment": "evil",
+          "category": "minion",
+          "status_effects": [
+            "Dead",
+            "No Ability"
+          ]
+        },
+        {
+          "name": "Mastermind",
+          "description": "If the Demon dies by execution (ending the game), play for 1 more day. If a player is then executed, their team loses.",
+          "icon_path": "mastermind.png",
+          "alignment": "evil",
+          "category": "minion",
+          "status_effects": []
+        },
+        {
+          "name": "Zombuul",
+          "description": "Each night*, if no-one died today, choose a player: they die. The 1st time you die, you live but register as dead.",
+          "icon_path": "zombuul.png",
+          "alignment": "evil",
+          "category": "demon",
+          "status_effects": [
+            "Dead",
+            "Died Today"
+          ]
+        },
+        {
+          "name": "Pukka",
+          "description": "Each night, choose a player: they are poisoned. The previously poisoned player dies then becomes healthy.",
+          "icon_path": "pukka.png",
+          "alignment": "evil",
+          "category": "demon",
+          "status_effects": [
+            "Poisoned",
+            "Dead"
+          ]
+        },
+        {
+          "name": "Shabaloth",
+          "description": "Each night*, choose 2 players: they die. A dead player you chose last night might be regurgitated.",
+          "icon_path": "shabaloth.png",
+          "alignment": "evil",
+          "category": "demon",
+          "status_effects": [
+            "Dead",
+            "Alive"
+          ]
+        },
+        {
+          "name": "Po",
+          "description": "Each night*, you may choose a player: they die. If your last choice was no-one, choose 3 players tonight.",
+          "icon_path": "po.png",
+          "alignment": "evil",
+          "category": "demon",
+          "status_effects": [
+            "Dead",
+            "3 Attacks"
+          ]
+        }
+      ],
+      "travelers": [],
+      "first_night_steps": [
+        {
+          "name": "Dusk",
+          "description": "Check that all eyes are closed. Some Travellers & Fabled act.",
+          "always_show": true,
+          "show_when_dead": false
+        },
+        {
+          "name": "Minion Info",
+          "description": "If there are 7 or more players, wake all Minions: Show the THIS IS THE DEMON token. Point to the Demon.",
+          "always_show": true,
+          "show_when_dead": false
+        },
+        {
+          "name": "Lunatic",
+          "description": "If there are 7 or more players, show the Lunatic THESE ARE YOUR MINIONS (point to the bluff 'Minions') and three bluffs, then put them to sleep. Wake the real Demon, show YOU ARE and the Demon token, then show THIS PLAYER IS the Lunatic and point to the Lunatic.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Demon Info",
+          "description": "If there are 7 or more players, wake the Demon: Show the THESE ARE YOUR MINIONS token. Point to all Minions. Show the THESE CHARACTERS ARE NOT IN PLAY token. Show 3 not-in-play good character tokens.",
+          "always_show": true,
+          "show_when_dead": false
+        },
+        {
+          "name": "Sailor",
+          "description": "The Sailor points to a living player. Either the Sailor or that player is drunk.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Courtier",
+          "description": "The Courtier either signals 'no', or points to a character on the sheet. If used and that character is in play, that player is drunk.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Godfather",
+          "description": "Show the Godfather each Outsider token in play.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Devil's Advocate",
+          "description": "The Devil's Advocate points to a living player. That player survives execution tomorrow.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Pukka",
+          "description": "The Pukka points to a player. That player is poisoned.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Grandmother",
+          "description": "Show the Grandmother the marked character token and point to the marked player.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Chambermaid",
+          "description": "The Chambermaid points to two players. Show the number signal (0, 1, 2, ...) for how many of them wake tonight for their ability.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Dawn",
+          "description": "Wait a few seconds. Call for eyes open.",
+          "always_show": true,
+          "show_when_dead": false
+        }
+      ],
+      "other_night_steps": [
+        {
+          "name": "Dusk",
+          "description": "Check that all eyes are closed. Some Travellers & Fabled act.",
+          "always_show": true,
+          "show_when_dead": false
+        },
+        {
+          "name": "Sailor",
+          "description": "The previously drunk player is no longer drunk. The Sailor points to a living player; either the Sailor or that player is drunk.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Courtier",
+          "description": "Reduce the remaining days the marked player is poisoned. If the Courtier has not yet used their ability, they either signal 'no' or point to a character on the sheet; if used and that character is in play, that player is drunk.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Innkeeper",
+          "description": "The Innkeeper points to two players; both are safe from the Demon tonight, but one is drunk.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Gambler",
+          "description": "The Gambler points to a player and guesses a character. If wrong, the Gambler dies.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Devil's Advocate",
+          "description": "The Devil's Advocate points to a living player, different from the previous night. That player survives execution tomorrow.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Lunatic",
+          "description": "Do whatever is needed to simulate the Demon for the Lunatic.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Exorcist",
+          "description": "The Exorcist points to a player, different from the previous night. If it is the Demon, wake the Demon and show THIS PLAYER IS the Exorcist; the Demon does not act tonight.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Zombuul",
+          "description": "If no-one died during the day, the Zombuul points to a player. That player dies.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Pukka",
+          "description": "The Pukka points to a player; that player is poisoned. The previously poisoned player dies.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Shabaloth",
+          "description": "A player the Shabaloth chose the previous night might be resurrected. The Shabaloth points to two players; those players die.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Po",
+          "description": "If the Po chose no-one the previous night, the Po points to three players. Otherwise the Po either signals 'no', or points to one player. Chosen players die.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Assassin",
+          "description": "If the Assassin has not yet used their ability, they either signal 'no', or point to a player. That player dies.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Godfather",
+          "description": "If an Outsider died today, the Godfather points to a player. That player dies.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Gossip",
+          "description": "If the Gossip's public statement was true, choose a player not protected from dying tonight. That player dies.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Professor",
+          "description": "If the Professor has not used their ability, they either shake 'no', or point to a player; if that player is a Townsfolk, they are resurrected.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Tinker",
+          "description": "The Tinker might die.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Moonchild",
+          "description": "If the Moonchild used their ability to target a player today and that player is good, they die.",
+          "always_show": false,
+          "show_when_dead": true
+        },
+        {
+          "name": "Grandmother",
+          "description": "If the Grandmother's grandchild was killed by the Demon tonight, the Grandmother dies.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Chambermaid",
+          "description": "The Chambermaid points to two players. Show the number signal (0, 1, 2, ...) for how many of them wake tonight for their ability.",
+          "always_show": false,
+          "show_when_dead": false
+        },
+        {
+          "name": "Dawn",
+          "description": "Wait a few seconds. Call for eyes open & immediately say who died.",
+          "always_show": true,
+          "show_when_dead": false
+        }
+      ]
     }
   },
   "script_names": {
