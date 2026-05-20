@@ -111,8 +111,19 @@ pub async fn build_game_state_response(state: &AppState) -> AppResult<GameStateR
     })
 }
 
-fn sse_payload(state: &GameState) -> String {
-    serde_json::to_string(&game_state_base(state)).unwrap_or_else(|_| "{}".to_string())
+/// Build one SSE frame: the full game state plus the current timer (same shape
+/// as `GET /game/state`). The timer is read live so per-second timer broadcasts
+/// carry the updated countdown.
+async fn sse_frame(game: &GameState, app: &AppState) -> String {
+    let timer = TimerStateResponse {
+        is_running: app.timer.get_is_running().await,
+        seconds: app.timer.get_seconds().await,
+    };
+    let payload = GameStateResponse {
+        base: game_state_base(game),
+        timer,
+    };
+    serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string())
 }
 
 // --- New game ---
@@ -454,13 +465,21 @@ async fn stream_game_state(
     State(state): State<AppState>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let rx = state.manager.subscribe();
-    let initial = state.manager.get_state().await.ok();
-    let initial_event = initial.map(|s| Ok(Event::default().data(sse_payload(&s))));
 
-    let updates = BroadcastStream::new(rx).filter_map(|res| match res {
-        Ok(s) => Some(Ok(Event::default().data(sse_payload(&s)))),
-        Err(_) => None,
-    });
+    // Full state (with timer) immediately on connect.
+    let initial_event = match state.manager.get_state().await.ok() {
+        Some(ref game) => Some(Ok(Event::default().data(sse_frame(game, &state).await))),
+        None => None,
+    };
+
+    // Then a frame on every game mutation and every timer change.
+    let app = state.clone();
+    let updates = BroadcastStream::new(rx)
+        .filter_map(|res| res.ok())
+        .then(move |game| {
+            let app = app.clone();
+            async move { Ok(Event::default().data(sse_frame(&game, &app).await)) }
+        });
 
     let stream = tokio_stream::iter(initial_event).chain(updates);
     Sse::new(stream).keep_alive(KeepAlive::default())

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Death's Door — SSE Debug</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        background: #0d1117;
+        color: #c9d1d9;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        flex-wrap: wrap;
+        padding: 0.7rem 1rem;
+        background: #161b22;
+        border-bottom: 1px solid #30363d;
+      }
+      h1 { font-size: 0.95rem; margin: 0; font-weight: 600; }
+      .status { display: flex; align-items: center; }
+      .dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; margin-right: 0.4rem; display: inline-block; }
+      .ok { background: #3fb950; }
+      .warn { background: #d29922; }
+      .err { background: #f85149; }
+      .pill {
+        background: #21262d;
+        border: 1px solid #30363d;
+        border-radius: 999px;
+        padding: 0.15rem 0.6rem;
+        font-size: 0.8rem;
+      }
+      .muted { color: #8b949e; }
+      pre {
+        margin: 0;
+        padding: 1rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 0.85rem;
+        line-height: 1.45;
+        tab-size: 2;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Death's Door · <span class="muted">/game/stream</span></h1>
+      <span class="status"><span id="dot" class="dot warn"></span><span id="statusText">connecting…</span></span>
+      <span class="pill" id="frames">0 frames</span>
+      <span class="pill" id="age">—</span>
+      <span class="pill muted" id="summary">—</span>
+    </header>
+    <pre id="dump">Waiting for first frame…</pre>
+    <script>
+      const dot = document.getElementById("dot");
+      const statusText = document.getElementById("statusText");
+      const dump = document.getElementById("dump");
+      const framesEl = document.getElementById("frames");
+      const ageEl = document.getElementById("age");
+      const summaryEl = document.getElementById("summary");
+      let frames = 0;
+      let lastTs = null;
+
+      function setStatus(text, cls) {
+        statusText.textContent = text;
+        dot.className = "dot " + cls;
+      }
+
+      // Served by the backend, so the stream is same-origin.
+      const es = new EventSource("/game/stream");
+      es.onopen = () => setStatus("connected", "ok");
+      es.onerror = () => setStatus("disconnected — retrying…", "err");
+      es.onmessage = (e) => {
+        frames++;
+        lastTs = Date.now();
+        framesEl.textContent = frames + (frames === 1 ? " frame" : " frames");
+        setStatus("connected", "ok");
+        try {
+          const data = JSON.parse(e.data);
+          dump.textContent = JSON.stringify(data, null, 2);
+          const players = Array.isArray(data.players) ? data.players.length : "?";
+          const timer = data.timer
+            ? `${data.timer.seconds}s ${data.timer.is_running ? "▶" : "⏸"}`
+            : "no timer";
+          summaryEl.textContent =
+            `${data.script_name ?? "?"} · ${players} players · ` +
+            `${data.current_night_step ?? "?"} · ${timer}`;
+        } catch {
+          dump.textContent = "[unparseable frame]\n" + e.data;
+        }
+      };
+
+      // Show how long since the last frame (useful to spot a stalled stream).
+      setInterval(() => {
+        if (lastTs) ageEl.textContent = ((Date.now() - lastTs) / 1000).toFixed(1) + "s ago";
+      }, 200);
+    </script>
+  </body>
+</html>

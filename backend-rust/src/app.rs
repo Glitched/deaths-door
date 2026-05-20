@@ -203,6 +203,8 @@ pub fn build_router(state: AppState) -> Router {
             }),
         )
         .route_service("/reveal", ServeFile::new("static/role.html"))
+        // SSE inspector: raw game-state dump for debugging.
+        .route_service("/debug", ServeFile::new("static/debug.html"))
         .nest_service("/static", ServeDir::new("static"))
         // Serve the built frontend (if present) as a fallback so API routes win.
         .fallback_service(ServeDir::new("static/app"))

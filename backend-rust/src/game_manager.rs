@@ -44,6 +44,14 @@ impl GameManager {
         self.tx.subscribe()
     }
 
+    /// Re-broadcast the current state to SSE subscribers without a mutation.
+    /// Used by the timer to push per-second updates over the same stream.
+    pub async fn notify_current(&self) {
+        if let Some(state) = self.inner.lock().await.state.clone() {
+            let _ = self.tx.send(state);
+        }
+    }
+
     /// Get the current game state, or an error if no game is active.
     pub async fn state(&self) -> Result<GameState, GameError> {
         self.inner

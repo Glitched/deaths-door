@@ -1,4 +1,4 @@
-import { useTimer } from "@/hooks/useTimer";
+import type { TimerState } from "@/api/types";
 
 function formatTimer(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -6,9 +6,9 @@ function formatTimer(totalSeconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export function TimerDisplay() {
-  const timer = useTimer();
-
+// Timer now arrives on the game-state SSE stream (pushed on every change), so
+// it's passed in from the page rather than separately polled.
+export function TimerDisplay({ timer }: { timer: TimerState | null }) {
   if (!timer) return null;
 
   return (

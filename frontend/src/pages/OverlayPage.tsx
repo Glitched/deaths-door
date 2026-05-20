@@ -14,7 +14,7 @@ export function OverlayPage() {
       {status === "disconnected" && (
         <div className="absolute top-4 right-4 w-6 h-6 rounded-full bg-red-500 animate-pulse blur-md shadow-[0_0_20px_8px_rgba(239,68,68,0.5)]" />
       )}
-      <TimerDisplay />
+      <TimerDisplay timer={gameState?.timer ?? null} />
       {gameState && !night && (
         <>
           <div

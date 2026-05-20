@@ -51,7 +51,7 @@ impl TimerState {
         let this = Arc::clone(self);
         tokio::spawn(async move {
             loop {
-                {
+                let changed = {
                     let mut inner = this.inner.lock().await;
                     if inner.is_running {
                         if inner.seconds > 0 {
@@ -61,7 +61,14 @@ impl TimerState {
                             inner.seconds = 0;
                             let _ = this.sound.play(SoundName::Timer);
                         }
+                        true
+                    } else {
+                        false
                     }
+                };
+                // Push the per-second update to SSE subscribers (only while running).
+                if changed {
+                    this.manager.notify_current().await;
                 }
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
@@ -96,6 +103,7 @@ impl TimerState {
         self.apns
             .send_timer_update(seconds, new_value, alive, total)
             .await;
+        self.manager.notify_current().await;
     }
 
     pub async fn set_seconds(&self, new_value: i64) {
@@ -108,6 +116,7 @@ impl TimerState {
         self.apns
             .send_timer_update(seconds, is_running, alive, total)
             .await;
+        self.manager.notify_current().await;
     }
 
     pub async fn add_seconds(&self, additional: i64) {
