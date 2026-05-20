@@ -194,8 +194,7 @@
 
         <h2>Night phase</h2>
         <div class="row">
-          <button id="firstNightBtn">First night</button>
-          <button id="otherNightBtn">Other night</button>
+          <button id="nightToggleBtn" title="Toggle first night ⇄ other nights">Phase: —</button>
         </div>
         <div class="row">
           <button id="duskBtn">Dusk</button>
@@ -351,6 +350,12 @@
           `· ${state.execution_threshold ?? "?"} to execute · roles ${state.should_reveal_roles ? "revealed" : "hidden"} ` +
           `· ⏱ ${t.seconds ?? "?"}s ${t.is_running ? "▶" : "⏸"}`;
 
+        // Stateful toggle buttons double as live indicators of current state.
+        $("nightToggleBtn").textContent = `Phase: ${state.is_first_night ? "first night" : "other nights"}`;
+        $("nightToggleBtn").classList.toggle("primary", state.is_first_night);
+        $("revealBtn").textContent = `Reveal: ${state.should_reveal_roles ? "on" : "off"}`;
+        $("revealBtn").classList.toggle("primary", state.should_reveal_roles);
+
         // Players
         const wrap = $("playersEl");
         wrap.textContent = "";
@@ -465,8 +470,10 @@
         act(`Added traveler ${traveler}`, async () => { await api("POST", "/players/add_traveler", { name, traveler }); $("travelerName").value = ""; });
       };
 
-      $("firstNightBtn").onclick = () => act("First night", () => api("POST", "/game/night/phase/first_night", { is_first_night: true }));
-      $("otherNightBtn").onclick = () => act("Other night", () => api("POST", "/game/night/phase/first_night", { is_first_night: false }));
+      $("nightToggleBtn").onclick = () => {
+        const next = !(state?.is_first_night);
+        act(next ? "→ first night" : "→ other nights", () => api("POST", "/game/night/phase/first_night", { is_first_night: next }));
+      };
       $("duskBtn").onclick = () => act("Step → Dusk", () => api("POST", "/game/night/phase/step", { step: "Dusk" }));
       $("dawnBtn").onclick = () => act("Step → Dawn", () => api("POST", "/game/night/phase/step", { step: "Dawn" }));
       $("prevStepBtn").onclick = () => gotoStep(-1);
