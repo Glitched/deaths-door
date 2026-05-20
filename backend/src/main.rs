@@ -1,6 +1,7 @@
 //! Death's Door server entry point.
 
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use deaths_door::app::{build_router, AppState};
 
@@ -60,5 +61,14 @@ async fn shutdown_signal() {
         _ = ctrl_c => {},
         _ = terminate => {},
     }
-    tracing::info!("shutdown signal received, stopping");
+    tracing::info!("shutdown signal received, stopping (force-exit in 2s)");
+
+    // Long-lived SSE streams (`/game/stream`) never close on their own, so a
+    // pure graceful drain would hang waiting for them. Force-exit shortly after
+    // the signal as a backstop. Quick in-flight requests still finish first.
+    tokio::spawn(async {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        tracing::warn!("forcing exit (open streams did not drain in time)");
+        std::process::exit(0);
+    });
 }
