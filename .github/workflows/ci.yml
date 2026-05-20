@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend-rust
+        working-directory: backend
 
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +22,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: backend-rust
+          workspaces: backend
 
       # Native deps for the `serialport` (libudev) and `rodio`/cpal (ALSA) crates.
       - name: Install system deps

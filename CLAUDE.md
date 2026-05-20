@@ -12,7 +12,7 @@ I'm learning jj - when using jj commands, please explain what the equivalent git
 
 ### Backend (Rust / axum)
 ```bash
-cd backend-rust
+cd backend
 
 # Run development server (serves on 0.0.0.0:8000)
 make run
@@ -49,7 +49,7 @@ npm run lint
 make run         # run backend
 make test        # run backend tests
 make sample      # run backend with sample game
-make build       # build frontend into backend-rust/static/app/
+make build       # build frontend into backend/static/app/
 ```
 
 ## Architecture Overview
@@ -103,7 +103,7 @@ This is a **Blood on the Clocktower game management system** with streaming over
 - Rust stable (1.94+); `cargo` manages dependencies
 - Node.js 25+ with mise for version management
 - Set `SAMPLE_GAME=true` to load sample game data on startup
-- **Optional:** DMX USB interface for lighting effects; APNS key at `backend-rust/keys/AuthKey_*.p8`
+- **Optional:** DMX USB interface for lighting effects; APNS key at `backend/keys/AuthKey_*.p8`
 - Font "Help Me" for timer overlay (falls back to Impact)
 
 ### Source-of-truth note
@@ -112,7 +112,7 @@ This is a **Blood on the Clocktower game management system** with streaming over
 
 ### Testing Strategy
 
-Tests live in `backend-rust/tests/`: `event_sourcing.rs` (unit tests for `apply`/`replay`/store) and `api.rs` (HTTP integration tests through the real router via `tower::ServiceExt::oneshot`, backed by an in-memory store). `tests/common/mod.rs` has helpers:
+Tests live in `backend/tests/`: `event_sourcing.rs` (unit tests for `apply`/`replay`/store) and `api.rs` (HTTP integration tests through the real router via `tower::ServiceExt::oneshot`, backed by an in-memory store). `tests/common/mod.rs` has helpers:
 
 ```rust
 let app = test_app();                       // in-memory-backed router

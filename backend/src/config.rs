@@ -14,7 +14,7 @@ pub const APNS_BUNDLE_ID: &str = "dev.bytealigned.DeathsDoor";
 pub fn apns_key_globs() -> Vec<PathBuf> {
     let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut globs = vec![
-        // backend-rust/keys/AuthKey_*.p8
+        // backend/keys/AuthKey_*.p8
         crate_root.join("keys").join("AuthKey_*.p8"),
     ];
     // Repo-root keys/AuthKey_*.p8 (where the key has historically lived).

@@ -71,7 +71,7 @@ impl ApnsManager {
         if !available {
             tracing::warn!(
                 "APNS not configured, Live Activity push updates disabled. \
-                 Missing: APNS key file (backend-rust/keys/AuthKey_*.p8)"
+                 Missing: APNS key file (backend/keys/AuthKey_*.p8)"
             );
         } else {
             tracing::info!(

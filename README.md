@@ -12,7 +12,7 @@ An iOS app (maintained separately) serves as the storyteller's primary remote co
 
 ```bash
 # Backend
-cd backend-rust
+cd backend
 make run         # or: make sample (loads a pre-built test game)
 
 # Frontend (dev mode with hot reload)
