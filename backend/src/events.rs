@@ -77,6 +77,9 @@ pub enum EventPayload {
         player_name: String,
         effect: String,
     },
+    DemonBluffsSet {
+        bluffs: Vec<String>,
+    },
 }
 
 impl EventPayload {
@@ -100,6 +103,7 @@ impl EventPayload {
             EventPayload::PlayerAlignmentSet { .. } => "player_alignment_set",
             EventPayload::StatusEffectAdded { .. } => "status_effect_added",
             EventPayload::StatusEffectRemoved { .. } => "status_effect_removed",
+            EventPayload::DemonBluffsSet { .. } => "demon_bluffs_set",
         }
     }
 }
@@ -214,5 +218,12 @@ pub fn describe_event(payload: &EventPayload) -> String {
             player_name,
             effect,
         } => format!("{player_name} lost {effect}"),
+        EventPayload::DemonBluffsSet { bluffs } => {
+            if bluffs.is_empty() {
+                "Demon bluffs cleared".to_string()
+            } else {
+                format!("Demon bluffs set to {}", bluffs.join(", "))
+            }
+        }
     }
 }

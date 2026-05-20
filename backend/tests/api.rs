@@ -32,6 +32,60 @@ async fn new_game_unknown_script_is_404() {
 }
 
 #[tokio::test]
+async fn set_demon_bluffs_appears_in_state() {
+    let app = test_app();
+    new_game(&app).await;
+
+    // Case-insensitive input is canonicalized to the script's character names.
+    let (status, body) = post(
+        &app,
+        "/game/bluffs",
+        json!({ "bluffs": ["mayor", "Slayer", "empath"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let names: Vec<&str> = body["demon_bluffs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["Mayor", "Slayer", "Empath"]);
+
+    // Bluffs are resolved to full character objects in the state snapshot.
+    let (status, body) = get(&app, "/game/state").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["demon_bluffs"][0]["name"], "Mayor");
+    assert!(body["demon_bluffs"][0]["description"]
+        .as_str()
+        .is_some_and(|d| !d.is_empty()));
+
+    // An empty list clears them.
+    let (status, body) = post(&app, "/game/bluffs", json!({ "bluffs": [] })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["demon_bluffs"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn set_demon_bluffs_validates_input() {
+    let app = test_app();
+    new_game(&app).await;
+
+    // More than 3 -> 400.
+    let (status, _) = post(
+        &app,
+        "/game/bluffs",
+        json!({ "bluffs": ["Mayor", "Slayer", "Empath", "Chef"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Unknown role -> 404.
+    let (status, _) = post(&app, "/game/bluffs", json!({ "bluffs": ["Nonexistent"] })).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn scripts_list_contains_trouble_brewing() {
     let app = test_app();
     let (status, body) = get(&app, "/scripts/list").await;

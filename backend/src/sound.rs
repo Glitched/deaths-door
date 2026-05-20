@@ -117,10 +117,12 @@ impl SoundFx {
         let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
         std::thread::spawn(move || {
             let started = (|| -> Result<(rodio::OutputStream, rodio::Sink), String> {
-                let (stream, handle) =
-                    rodio::OutputStream::try_default().map_err(|e| format!("no audio output device: {e}"))?;
-                let sink = rodio::Sink::try_new(&handle).map_err(|e| format!("could not create audio sink: {e}"))?;
-                let file = File::open(&path).map_err(|e| format!("could not open {}: {e}", path.display()))?;
+                let (stream, handle) = rodio::OutputStream::try_default()
+                    .map_err(|e| format!("no audio output device: {e}"))?;
+                let sink = rodio::Sink::try_new(&handle)
+                    .map_err(|e| format!("could not create audio sink: {e}"))?;
+                let file = File::open(&path)
+                    .map_err(|e| format!("could not open {}: {e}", path.display()))?;
                 let source = rodio::Decoder::new(BufReader::new(file))
                     .map_err(|e| format!("could not decode {}: {e}", path.display()))?;
                 sink.append(source);
@@ -141,6 +143,7 @@ impl SoundFx {
         });
 
         // Wait for the start result (decoding a short clip takes milliseconds).
-        rx.recv().unwrap_or_else(|_| Err("audio thread terminated before reporting".to_string()))
+        rx.recv()
+            .unwrap_or_else(|_| Err("audio thread terminated before reporting".to_string()))
     }
 }

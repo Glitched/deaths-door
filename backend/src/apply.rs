@@ -192,6 +192,13 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
             next.version += 1;
             next
         }
+
+        EventPayload::DemonBluffsSet { bluffs } => {
+            let mut next = state.clone();
+            next.demon_bluffs = bluffs.clone();
+            next.version += 1;
+            next
+        }
     }
 }
 

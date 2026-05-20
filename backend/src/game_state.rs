@@ -45,6 +45,10 @@ pub struct GameState {
     pub should_reveal_roles: bool,
     pub current_night_step: String,
     pub is_first_night: bool,
+    /// Up to 3 character names recorded as the Demon's bluffs (good characters
+    /// shown as "not in play"). Stored as names; resolved via [`Self::get_demon_bluffs`].
+    #[serde(default)]
+    pub demon_bluffs: Vec<String>,
     pub version: i64,
 }
 
@@ -59,6 +63,7 @@ impl GameState {
             should_reveal_roles: false,
             current_night_step: "Dusk".to_string(),
             is_first_night: true,
+            demon_bluffs: Vec::new(),
             version: 0,
         }
     }
@@ -185,6 +190,20 @@ impl GameState {
             return Vec::new();
         };
         self.included_role_names
+            .iter()
+            .filter_map(|name| script.get_character(name))
+            .collect()
+    }
+
+    // --- Demon bluffs ---
+
+    /// The recorded demon bluffs as [`Character`] objects, resolved against the
+    /// script. Names that don't resolve (e.g. unknown script) are dropped.
+    pub fn get_demon_bluffs(&self) -> Vec<&'static Character> {
+        let Some(script) = self.get_script() else {
+            return Vec::new();
+        };
+        self.demon_bluffs
             .iter()
             .filter_map(|name| script.get_character(name))
             .collect()

@@ -37,6 +37,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(get_night_phase))
         .routes(routes!(set_night_step))
         .routes(routes!(set_first_night))
+        .routes(routes!(set_demon_bluffs))
         .routes(routes!(get_game_history))
         .routes(routes!(rewind_game))
         .routes(routes!(fork_game))
@@ -59,6 +60,9 @@ pub struct GameStateBase {
     pub status_effects: Vec<StatusEffectOut>,
     /// Roles in the pool not yet assigned to a player.
     pub included_roles: Vec<CharacterOut>,
+    /// The Demon's bluffs (good characters shown as "not in play"), resolved to
+    /// full character objects. Up to 3; empty if none set. Set via `POST /game/bluffs`.
+    pub demon_bluffs: Vec<CharacterOut>,
     /// Night steps for the current phase, filtered to roles in play.
     pub night_steps: Vec<NightStep>,
     pub living_player_count: usize,
@@ -84,6 +88,11 @@ pub fn game_state_base(state: &GameState) -> GameStateBase {
         should_reveal_roles: state.should_reveal_roles,
         status_effects: state.get_status_effects(),
         included_roles: game_state_to_included_role_outs(state),
+        demon_bluffs: state
+            .get_demon_bluffs()
+            .iter()
+            .map(|c| c.to_out())
+            .collect(),
         night_steps: state.get_night_steps(),
         living_player_count: state.living_player_count(),
         execution_threshold: state.execution_threshold(),
@@ -296,6 +305,62 @@ async fn set_first_night(
         current_night_step: new_state.current_night_step,
         is_first_night: new_state.is_first_night,
     }))
+}
+
+// --- Demon bluffs ---
+
+#[derive(Deserialize, ToSchema)]
+pub struct SetBluffsRequest {
+    /// Up to 3 character names to record as the Demon's bluffs (good characters
+    /// shown as "not in play"). Names are matched case-insensitively against the
+    /// current script. Pass an empty list to clear the bluffs.
+    #[schema(example = json!(["Mayor", "Slayer", "Empath"]))]
+    pub bluffs: Vec<String>,
+}
+
+/// Record the Demon's bluffs (the up-to-3 characters shown as "not in play").
+///
+/// Each name must be a real character in the current script (matched
+/// case-insensitively and stored canonically); unknown roles 404 and more than
+/// 3 bluffs 400. The bluffs are persisted as an event and surface, resolved to
+/// full character objects, in every state snapshot — including the SSE stream.
+#[utoipa::path(
+    post, path = "/game/bluffs", tag = "Game",
+    request_body = SetBluffsRequest,
+    responses(
+        (status = 200, description = "Bluffs set; full game state returned", body = GameStateResponse),
+        (status = 400, description = "More than 3 bluffs given"),
+        (status = 404, description = "A named character is not in the current script")
+    )
+)]
+async fn set_demon_bluffs(
+    State(state): State<AppState>,
+    AppJson(req): AppJson<SetBluffsRequest>,
+) -> AppResult<Json<GameStateResponse>> {
+    if req.bluffs.len() > 3 {
+        return Err(AppError::bad_request(format!(
+            "At most 3 demon bluffs allowed, got {}",
+            req.bluffs.len()
+        )));
+    }
+    // Resolve each name against the current script and store the canonical
+    // character name; reject unknown roles so typos surface as a 404.
+    let game = state.manager.get_state().await?;
+    let script = game
+        .get_script()
+        .ok_or_else(|| AppError::not_found("No script loaded for the current game"))?;
+    let mut canonical = Vec::with_capacity(req.bluffs.len());
+    for name in &req.bluffs {
+        let character = script
+            .get_character(name)
+            .ok_or_else(|| AppError::not_found(format!("Role '{name}' not found in script")))?;
+        canonical.push(character.name.clone());
+    }
+    state
+        .manager
+        .dispatch(EventPayload::DemonBluffsSet { bluffs: canonical })
+        .await?;
+    Ok(Json(build_game_state_response(&state).await?))
 }
 
 // --- Event sourcing endpoints ---

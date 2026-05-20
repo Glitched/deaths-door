@@ -69,6 +69,40 @@ fn game_created_sets_version_and_script() {
 }
 
 #[test]
+fn demon_bluffs_set_and_resolved() {
+    let state = game_with_roles(&["Imp", "Chef"]);
+    let next = apply(
+        &state,
+        &evt(
+            &state,
+            EventPayload::DemonBluffsSet {
+                bluffs: vec!["Mayor".to_string(), "Slayer".to_string()],
+            },
+        ),
+    );
+    assert_eq!(next.version, state.version + 1);
+    assert_eq!(
+        next.demon_bluffs,
+        vec!["Mayor".to_string(), "Slayer".to_string()]
+    );
+    // Resolves against the script to full Character objects.
+    let resolved: Vec<&str> = next
+        .get_demon_bluffs()
+        .iter()
+        .map(|c| c.name.as_str())
+        .collect();
+    assert_eq!(resolved, ["Mayor", "Slayer"]);
+
+    // Setting an empty list clears them.
+    let cleared = apply(
+        &next,
+        &evt(&next, EventPayload::DemonBluffsSet { bluffs: vec![] }),
+    );
+    assert!(cleared.demon_bluffs.is_empty());
+    assert!(cleared.get_demon_bluffs().is_empty());
+}
+
+#[test]
 fn player_added_consumes_role_from_pool() {
     let state = game_with_roles(&["Imp", "Chef"]);
     assert_eq!(state.included_role_names.len(), 2);
