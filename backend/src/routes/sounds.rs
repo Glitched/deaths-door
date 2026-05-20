@@ -36,9 +36,12 @@ pub struct PlaySoundResponse {
 async fn play_sound(Path(name): Path<String>) -> AppResult<Json<PlaySoundResponse>> {
     let sound_name =
         SoundName::from_str(&name).ok_or_else(|| AppError::not_found("Sound not found"))?;
-    SoundFx::new()
-        .play(sound_name)
-        .map_err(|_| AppError::internal("Failed to play sound"))?;
+    // `play` blocks until playback starts (or fails to), so run it off the async
+    // worker. A decode/device/file failure now surfaces as a 500 with the reason.
+    tokio::task::spawn_blocking(move || SoundFx::new().play(sound_name))
+        .await
+        .map_err(|e| AppError::internal(format!("sound task failed: {e}")))?
+        .map_err(|e| AppError::internal(format!("Failed to play '{name}': {e}")))?;
     Ok(Json(PlaySoundResponse {
         status: "success".to_string(),
         sound: name,

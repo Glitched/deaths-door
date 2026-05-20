@@ -115,7 +115,10 @@ async fn trigger_integrated_scene(
     }
     state.lighting.trigger_scene(&name);
     if let Some(sound) = SoundName::from_str(&name) {
-        let _ = SoundFx::new().play(sound);
+        // Best-effort (the scene is lighting-primary); off the async worker.
+        tokio::task::spawn_blocking(move || {
+            let _ = SoundFx::new().play(sound);
+        });
     }
     Ok(ok(format!(
         "Integrated scene '{name}' triggered successfully"

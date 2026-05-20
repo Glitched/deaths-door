@@ -59,7 +59,10 @@ impl TimerState {
                         } else {
                             inner.is_running = false;
                             inner.seconds = 0;
-                            let _ = this.sound.play(SoundName::Timer);
+                            let fx = this.sound.clone();
+                            tokio::task::spawn_blocking(move || {
+                                let _ = fx.play(SoundName::Timer);
+                            });
                         }
                         true
                     } else {

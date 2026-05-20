@@ -100,44 +100,47 @@ impl SoundFx {
         SoundFx
     }
 
-    /// Play a sound effect (fire-and-forget). Returns `Err` only if the sound
-    /// file can't be located; audio-device failures are logged and ignored.
+    /// Play a sound effect. Blocks only until playback has *started* (file
+    /// opened, decoded, audio device acquired), then plays out asynchronously.
+    ///
+    /// Returns `Err` if the sound can't be started — file missing, undecodable
+    /// (e.g. an unsupported WAV variant), or no audio output device — so callers
+    /// can surface the failure instead of silently dropping it. Because it waits
+    /// for the start signal, call it from a blocking context (`spawn_blocking`).
     pub fn play(&self, sound: SoundName) -> Result<(), String> {
         let Some(path) = sound_path(sound) else {
-            return Err(format!("Sound file not found for {}", sound.value()));
+            return Err(format!("sound file not found for '{}'", sound.value()));
         };
 
+        // rodio's output stream is `!Send`, so setup + playback must live on one
+        // thread. Set up there, report whether playback started, then play out.
+        let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
         std::thread::spawn(move || {
-            let (_stream, handle) = match rodio::OutputStream::try_default() {
-                Ok(pair) => pair,
-                Err(e) => {
-                    tracing::warn!("No audio output device available: {e}");
-                    return;
-                }
-            };
-            let sink = match rodio::Sink::try_new(&handle) {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::warn!("Failed to create audio sink: {e}");
-                    return;
-                }
-            };
-            let file = match File::open(&path) {
-                Ok(f) => f,
-                Err(e) => {
-                    tracing::warn!("Failed to open sound file {:?}: {e}", path);
-                    return;
-                }
-            };
-            match rodio::Decoder::new(BufReader::new(file)) {
-                Ok(source) => {
-                    sink.append(source);
+            let started = (|| -> Result<(rodio::OutputStream, rodio::Sink), String> {
+                let (stream, handle) =
+                    rodio::OutputStream::try_default().map_err(|e| format!("no audio output device: {e}"))?;
+                let sink = rodio::Sink::try_new(&handle).map_err(|e| format!("could not create audio sink: {e}"))?;
+                let file = File::open(&path).map_err(|e| format!("could not open {}: {e}", path.display()))?;
+                let source = rodio::Decoder::new(BufReader::new(file))
+                    .map_err(|e| format!("could not decode {}: {e}", path.display()))?;
+                sink.append(source);
+                Ok((stream, sink))
+            })();
+
+            match started {
+                Ok((stream, sink)) => {
+                    let _ = tx.send(Ok(()));
                     sink.sleep_until_end();
+                    drop(stream); // keep the output stream alive until playback ends
                 }
-                Err(e) => tracing::warn!("Failed to decode sound file {:?}: {e}", path),
+                Err(e) => {
+                    tracing::warn!("sound playback failed: {e}");
+                    let _ = tx.send(Err(e));
+                }
             }
         });
 
-        Ok(())
+        // Wait for the start result (decoding a short clip takes milliseconds).
+        rx.recv().unwrap_or_else(|_| Err("audio thread terminated before reporting".to_string()))
     }
 }
