@@ -5,7 +5,7 @@ use uuid::Uuid;
 use deaths_door::apply::{apply, replay};
 use deaths_door::event_store::EventStore;
 use deaths_door::events::{describe_event, EventPayload, GameEvent};
-use deaths_door::game_state::GameState;
+use deaths_door::game_state::{ChoppingBlock, GameState};
 
 fn evt(state: &GameState, payload: EventPayload) -> GameEvent {
     GameEvent::new(state.game_id, state.version, payload)
@@ -100,6 +100,171 @@ fn demon_bluffs_set_and_resolved() {
     );
     assert!(cleared.demon_bluffs.is_empty());
     assert!(cleared.get_demon_bluffs().is_empty());
+}
+
+#[test]
+fn chopping_block_set_and_cleared() {
+    let state = game_with_roles(&["Imp", "Chef"]);
+    let state = add_player(&state, "Alice", "Imp", "evil");
+
+    // Set with a vote count.
+    let next = apply(
+        &state,
+        &evt(
+            &state,
+            EventPayload::ChoppingBlockSet {
+                player_name: "Alice".to_string(),
+                votes: Some(4),
+            },
+        ),
+    );
+    assert_eq!(next.version, state.version + 1);
+    assert_eq!(
+        next.chopping_block,
+        Some(ChoppingBlock {
+            player_name: "Alice".to_string(),
+            votes: Some(4),
+        })
+    );
+
+    // Re-setting without a vote count replaces the block.
+    let next = apply(
+        &next,
+        &evt(
+            &next,
+            EventPayload::ChoppingBlockSet {
+                player_name: "Alice".to_string(),
+                votes: None,
+            },
+        ),
+    );
+    assert_eq!(next.chopping_block.as_ref().unwrap().votes, None);
+
+    // Explicit clear.
+    let cleared = apply(&next, &evt(&next, EventPayload::ChoppingBlockCleared));
+    assert_eq!(cleared.chopping_block, None);
+}
+
+#[test]
+fn chopping_block_clears_when_its_player_dies_or_leaves() {
+    let state = game_with_roles(&["Imp", "Chef", "Mayor"]);
+    let state = add_player(&state, "Alice", "Imp", "evil");
+    let state = add_player(&state, "Bob", "Chef", "good");
+    let on_block = apply(
+        &state,
+        &evt(
+            &state,
+            EventPayload::ChoppingBlockSet {
+                player_name: "Alice".to_string(),
+                votes: None,
+            },
+        ),
+    );
+
+    // Killing a different player leaves the block alone.
+    let bob_dead = apply(
+        &on_block,
+        &evt(
+            &on_block,
+            EventPayload::PlayerAliveSet {
+                player_name: "Bob".to_string(),
+                is_alive: false,
+                cleared_effects: vec![],
+            },
+        ),
+    );
+    assert!(bob_dead.chopping_block.is_some());
+
+    // Killing the player on the block clears it.
+    let alice_dead = apply(
+        &on_block,
+        &evt(
+            &on_block,
+            EventPayload::PlayerAliveSet {
+                player_name: "Alice".to_string(),
+                is_alive: false,
+                cleared_effects: vec![],
+            },
+        ),
+    );
+    assert_eq!(alice_dead.chopping_block, None);
+
+    // Removing the player on the block clears it.
+    let alice_removed = apply(
+        &on_block,
+        &evt(
+            &on_block,
+            EventPayload::PlayerRemoved {
+                player_name: "Alice".to_string(),
+            },
+        ),
+    );
+    assert_eq!(alice_removed.chopping_block, None);
+
+    // Renaming the player on the block follows the rename.
+    let alice_renamed = apply(
+        &on_block,
+        &evt(
+            &on_block,
+            EventPayload::PlayerRenamed {
+                old_name: "Alice".to_string(),
+                new_name: "Alicia".to_string(),
+            },
+        ),
+    );
+    assert_eq!(alice_renamed.chopping_block.unwrap().player_name, "Alicia");
+}
+
+#[test]
+fn chopping_block_clears_when_night_begins() {
+    let state = game_with_roles(&["Imp"]);
+    let state = add_player(&state, "Alice", "Imp", "evil");
+    let on_block = apply(
+        &state,
+        &evt(
+            &state,
+            EventPayload::ChoppingBlockSet {
+                player_name: "Alice".to_string(),
+                votes: Some(3),
+            },
+        ),
+    );
+
+    // Re-bookmarking "Dawn" (still day) keeps the block.
+    let still_day = apply(
+        &on_block,
+        &evt(
+            &on_block,
+            EventPayload::NightStepSet {
+                step: "Dawn".to_string(),
+            },
+        ),
+    );
+    assert!(still_day.chopping_block.is_some());
+
+    // Stepping into the night clears it.
+    let night = apply(
+        &on_block,
+        &evt(
+            &on_block,
+            EventPayload::NightStepSet {
+                step: "Dusk".to_string(),
+            },
+        ),
+    );
+    assert_eq!(night.chopping_block, None);
+
+    // Toggling the first-night flag (resets to Dusk) clears it too.
+    let night = apply(
+        &on_block,
+        &evt(
+            &on_block,
+            EventPayload::FirstNightSet {
+                is_first_night: false,
+            },
+        ),
+    );
+    assert_eq!(night.chopping_block, None);
 }
 
 #[test]

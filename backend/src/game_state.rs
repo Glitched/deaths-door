@@ -11,6 +11,16 @@ use crate::script::Script;
 use crate::scripts::get_script_by_name;
 use crate::status_effect::StatusEffectOut;
 
+/// The player currently up for execution (the "chopping block").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ChoppingBlock {
+    pub player_name: String,
+    /// Vote count that put the player on the block, if the storyteller chose to
+    /// record it.
+    #[serde(default)]
+    pub votes: Option<u32>,
+}
+
 /// Immutable snapshot of a player's state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlayerState {
@@ -49,6 +59,10 @@ pub struct GameState {
     /// shown as "not in play"). Stored as names; resolved via [`Self::get_demon_bluffs`].
     #[serde(default)]
     pub demon_bluffs: Vec<String>,
+    /// The player currently on the chopping block, if any. Cleared automatically
+    /// when that player dies or is removed, or when night begins.
+    #[serde(default)]
+    pub chopping_block: Option<ChoppingBlock>,
     pub version: i64,
 }
 
@@ -64,6 +78,7 @@ impl GameState {
             current_night_step: "Dusk".to_string(),
             is_first_night: true,
             demon_bluffs: Vec::new(),
+            chopping_block: None,
             version: 0,
         }
     }

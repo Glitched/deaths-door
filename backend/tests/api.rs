@@ -86,6 +86,113 @@ async fn set_demon_bluffs_validates_input() {
 }
 
 #[tokio::test]
+async fn chopping_block_set_clear_and_validation() {
+    let app = test_app();
+    new_game(&app).await;
+    add_player_with_role(&app, "Alice", "Imp").await;
+    add_player_with_role(&app, "Bob", "Chef").await;
+
+    // Nothing on the block initially.
+    let (_, body) = get(&app, "/game/state").await;
+    assert_eq!(body["chopping_block"], json!(null));
+
+    // Unknown player -> 404.
+    let (status, _) = post(
+        &app,
+        "/game/chopping_block",
+        json!({ "player_name": "Nobody" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Set with votes; appears in the returned (and fetched) state.
+    let (status, body) = post(
+        &app,
+        "/game/chopping_block",
+        json!({ "player_name": "Alice", "votes": 4 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["chopping_block"]["player_name"], "Alice");
+    assert_eq!(body["chopping_block"]["votes"], 4);
+
+    // Votes are optional; a new nomination replaces the block.
+    let (status, body) = post(
+        &app,
+        "/game/chopping_block",
+        json!({ "player_name": "Bob" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["chopping_block"]["player_name"], "Bob");
+    assert_eq!(body["chopping_block"]["votes"], json!(null));
+
+    // Explicit clear; clearing again is safe.
+    let (status, body) = post(&app, "/game/chopping_block/clear", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["chopping_block"], json!(null));
+    let (status, _) = post(&app, "/game/chopping_block/clear", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // A dead player can't be put on the block.
+    post(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Bob", "is_alive": false }),
+    )
+    .await;
+    let (status, _) = post(
+        &app,
+        "/game/chopping_block",
+        json!({ "player_name": "Bob" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn chopping_block_auto_clears_on_death_and_night() {
+    let app = test_app();
+    new_game(&app).await;
+    add_player_with_role(&app, "Alice", "Imp").await;
+
+    // Killing the player on the block clears it.
+    post(
+        &app,
+        "/game/chopping_block",
+        json!({ "player_name": "Alice", "votes": 3 }),
+    )
+    .await;
+    let (status, _) = post(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Alice", "is_alive": false }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, body) = get(&app, "/game/state").await;
+    assert_eq!(body["chopping_block"], json!(null));
+
+    // Night falling clears the block.
+    post(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Alice", "is_alive": true }),
+    )
+    .await;
+    post(
+        &app,
+        "/game/chopping_block",
+        json!({ "player_name": "Alice" }),
+    )
+    .await;
+    let (status, _) = post(&app, "/game/night/phase/step", json!({ "step": "Dusk" })).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, body) = get(&app, "/game/state").await;
+    assert_eq!(body["chopping_block"], json!(null));
+}
+
+#[tokio::test]
 async fn scripts_list_contains_trouble_brewing() {
     let app = test_app();
     let (status, body) = get(&app, "/scripts/list").await;
@@ -427,6 +534,51 @@ async fn sounds_and_lights_basics() {
     // Spotlight without a calibrated position -> 404 (player 999 is never calibrated).
     let (status, _) = post(&app, "/lights/spotlight/player/999", json!({})).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn scene_effect_lifecycle() {
+    let app = test_app();
+    new_game(&app).await;
+
+    // Trigger the death scene silently (no audio during tests). Its effect
+    // length follows the death.wav audio (~1.5s), not the 3s default.
+    let (status, body) = post(&app, "/lights/scene/death?silent=true", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "success");
+    assert_eq!(body["effect"]["scene"], "death");
+    assert_eq!(body["sound"], json!(null));
+    let duration = body["effect"]["duration_ms"].as_u64().unwrap();
+    assert!(
+        (1000..3000).contains(&duration),
+        "death effect should follow its ~1.5s audio, got {duration}ms"
+    );
+
+    // While playing, the effect is visible in the game state snapshot.
+    let (_, state) = get(&app, "/game/state").await;
+    assert_eq!(state["active_effect"]["scene"], "death");
+
+    // A new trigger supersedes the old one (id increments, scene swaps).
+    let first_id = body["effect"]["id"].as_u64().unwrap();
+    let (_, body2) = post(&app, "/lights/scene/morning?silent=true", json!({})).await;
+    assert!(body2["effect"]["id"].as_u64().unwrap() > first_id);
+    let (_, state) = get(&app, "/game/state").await;
+    assert_eq!(state["active_effect"]["scene"], "morning");
+
+    // Blackout is instant: zero duration, no lingering active effect.
+    let (status, body) = post(&app, "/lights/scene/blackout", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["effect"]["duration_ms"], 0);
+    let (_, state) = get(&app, "/game/state").await;
+    assert_eq!(state["active_effect"], json!(null));
+
+    // The deprecated integrated alias still works. (Fog has no paired sound,
+    // so this stays silent during test runs and gets the default duration.)
+    let (status, body) = post(&app, "/lights/scene/integrated/fog", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["effect"]["scene"], "fog");
+    assert_eq!(body["sound"], json!(null));
+    assert_eq!(body["effect"]["duration_ms"], 3000);
 }
 
 #[tokio::test]

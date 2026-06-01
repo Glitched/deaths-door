@@ -114,6 +114,7 @@
       .tag { font-size: 0.62rem; padding: 0.05rem 0.35rem; border-radius: 4px; background: #30363d; color: #c9d1d9; }
       .tag.skull { background: #5d2a2a; color: #ffb4b4; }
       .tag.vote { background: #1f3a5f; color: #9ecbff; }
+      .tag.block { background: #5d452a; color: #ffd9a8; }
 
       .steps { display: flex; flex-direction: column; gap: 0.2rem; }
       .step { padding: 0.25rem 0.5rem; border-radius: 6px; font-size: 0.8rem; border: 1px solid transparent; }
@@ -348,6 +349,8 @@
           `<b>${state.script_name || "?"}</b> · ${state.is_first_night ? "first night" : "other night"} ` +
           `· step <b>${state.current_night_step || "—"}</b> · <b>${alive}</b>/${total} alive ` +
           `· ${state.execution_threshold ?? "?"} to execute · roles ${state.should_reveal_roles ? "revealed" : "hidden"} ` +
+          (state.chopping_block ? `· 🪓 <b>${state.chopping_block.player_name}</b> on the block ` : "") +
+          (state.active_effect ? `· ✨ <b>${state.active_effect.scene}</b> playing ` : "") +
           `· ⏱ ${t.seconds ?? "?"}s ${t.is_running ? "▶" : "⏸"}`;
 
         // Stateful toggle buttons double as live indicators of current state.
@@ -361,10 +364,12 @@
         wrap.textContent = "";
         for (const p of state.players || []) {
           const dead = !p.is_alive;
+          const onBlock = state.chopping_block?.player_name === p.name;
           const card = el("div", { className: "pcard" + (dead ? " dead" : "") });
           const name = el("div", { className: "pname" });
           name.append(el("span", { className: "nm " + alignClass(p.alignment), textContent: p.name }));
           if (dead) name.append(el("span", { className: "tag skull", textContent: "☠" }));
+          if (onBlock) name.append(el("span", { className: "tag block", textContent: "🪓 on block" }));
           if (p.has_used_dead_vote) name.append(el("span", { className: "tag", textContent: "voted" }));
           else if (dead) name.append(el("span", { className: "tag vote", textContent: "has vote" }));
           card.append(name);
@@ -378,6 +383,14 @@
           const rm = el("button", { textContent: "✕", title: "Remove", className: "danger" });
           rm.onclick = () => act(`Removed ${p.name}`, () => api("POST", "/players/remove", { name: p.name }));
           actions.append(kill, rm);
+          // Living players can be put on / taken off the chopping block.
+          if (!dead) {
+            const block = el("button", { textContent: onBlock ? "Off block" : "Block", title: onBlock ? "Clear the chopping block" : "Put on the chopping block" });
+            block.onclick = () => onBlock
+              ? act("Cleared chopping block", () => api("POST", "/game/chopping_block/clear"))
+              : act(`${p.name} on the block`, () => api("POST", "/game/chopping_block", { player_name: p.name }));
+            actions.append(block);
+          }
           card.append(actions);
           wrap.append(card);
         }

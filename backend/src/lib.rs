@@ -10,6 +10,7 @@ pub mod apply;
 pub mod character;
 pub mod character_type;
 pub mod config;
+pub mod effects;
 pub mod error;
 pub mod event_store;
 pub mod events;

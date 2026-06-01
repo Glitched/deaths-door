@@ -60,19 +60,21 @@ This is a **Blood on the Clocktower game management system** with a real-time ov
 
 **Event Sourcing**: All game state mutations are persisted as events to SQLite. A pure `apply(state, event) -> GameState` function rebuilds state from events. This enables game reload, rewind (undo), and forking (branching alternate timelines).
 
-**Game State** (`game_state.rs`): Immutable `GameState`/`PlayerState` structs (owned, cloned on update). Derived methods include `living_player_count()`, `execution_threshold()`, and `get_dead_players_with_vote()`. Updated via `GameManager::dispatch()` which atomically applies, persists, and notifies SSE subscribers.
+**Game State** (`game_state.rs`): Immutable `GameState`/`PlayerState` structs (owned, cloned on update). Derived methods include `living_player_count()`, `execution_threshold()`, and `get_dead_players_with_vote()`. Also tracks an optional `chopping_block` (player up for execution + optional vote count, set via `POST /game/chopping_block`) that auto-clears in `apply()` when that player dies or is removed, or when night begins. Updated via `GameManager::dispatch()` which atomically applies, persists, and notifies SSE subscribers.
 
 **Events** (`events.rs`): `EventPayload` is an internally-tagged serde enum (`#[serde(tag = "type")]`); the `type` tag values and JSON shape match the on-disk event log exactly. The pure `apply(state, event) -> GameState` and `replay()` functions live in `apply.rs`.
 
 **Event Store** (`event_store.rs`): `rusqlite`-backed persistence. Single `events` table with `game_id`, `sequence`, `event_type`, and JSON `payload`. Supports `get_events()`, `delete_after_sequence()` (rewind), and `fork_game()`.
 
-**Character/Script System**: Character, traveler, and night-step definitions are embedded from `data/botc_data.json` (`include_str!`) and parsed into `Script`/`Character` structs. `scripts.rs` is the registry (`get_script_by_name`); only "Trouble Brewing" has data wired up.
+**Character/Script System**: Character, traveler, and night-step definitions are embedded from `data/botc_data.json` (`include_str!`) and parsed into `Script`/`Character` structs. `scripts.rs` is the registry (`get_script_by_name`); all three base editions (Trouble Brewing, Sects & Violets, Bad Moon Rising) have their character pools and night orders wired up, though travelers are only populated for Trouble Brewing so far.
 
 **Real-time Updates**: `GET /game/stream` provides Server-Sent Events (SSE) via a `tokio::sync::broadcast` channel. REST endpoints remain available for polling (used by the iOS app).
 
 **API Architecture**: RESTful endpoints in `routes/` organized by domain (game, players, characters, scripts, sounds, timer, lights). Shared state is an `AppState` injected via axum's `State` extractor. Endpoints/DTOs are annotated with `utoipa`; `GET /openapi.json` serves the full OpenAPI 3.1 spec (with a usage guide in `info.description`).
 
-**DMX Lighting** (`lighting.rs`): Optional serial connection (`serialport`) to OpenDMX/FTDI USB interfaces for moving head lights, fog machine, and game event lighting scenes. **Sound** (`sound.rs`) uses `rodio`; **APNS** (`apns.rs`) uses `reqwest` + `jsonwebtoken` (ES256). All degrade gracefully when hardware/keys are absent.
+**DMX Lighting** (`lighting.rs`): Optional serial connection (`serialport`) to OpenDMX/FTDI USB interfaces for moving head lights and a fog machine. **Sound** (`sound.rs`) uses `rodio`; **APNS** (`apns.rs`) uses `reqwest` + `jsonwebtoken` (ES256). All degrade gracefully when hardware/keys are absent.
+
+**Scene Effects** (`effects.rs`): `POST /lights/scene/{name}` runs a scene as a coordinated effect: a timed DMX cue sequence (`build_cues()`), the scene's paired sound (death→death, drama→drama, goodnight→music_box, morning→rooster, reveal→drumroll; `?silent=true` to skip), and an `ActiveEffect {id, scene, duration_ms}` surfaced in `/game/state` and SSE frames so the overlay plays a matching full-screen visual (`EffectOverlay.tsx` + keyframes in `index.css`). Effect length follows the paired sound's audio duration. A new trigger supersedes any running effect.
 
 **Served pages** (`app.rs`): besides the JSON API, the backend serves the built React app from `static/app` (fallback route — `/overlay` is the projector overlay), a standalone role-reveal screen at `/reveal` (`static/role.html`), and an interactive dev console at `/debug` (`static/debug.html`). The `/debug` console subscribes to the SSE stream and exposes buttons that drive game state (night phase, reveals, etc.) — handy for testing without the iOS app. `/static/*` serves the remaining assets.
 
@@ -80,7 +82,7 @@ This is a **Blood on the Clocktower game management system** with a real-time ov
 
 1. **Game Creation**: Script selected → Game state initialized → Roles manually included via API → Ready for players
 2. **Mutations**: Route handler calls `manager.dispatch(event)` → `apply()` produces new immutable state → Event persisted to SQLite → SSE subscribers notified via broadcast
-3. **Frontend**: React overlay connects via `EventSource` to `/game/stream` → Receives full state on connect and after every mutation → Renders timer, player list, vote info
+3. **Frontend**: React overlay connects via `EventSource` to `/game/stream` → Receives full state on connect and after every mutation → Renders timer, player list (or chopping block during a vote), vote info, and scene-effect visuals
 
 ### Important Game Setup Workflow
 
@@ -115,7 +117,7 @@ This is a **Blood on the Clocktower game management system** with a real-time ov
 
 ### Testing Strategy
 
-Tests live in `backend/tests/`: `event_sourcing.rs` (unit tests for `apply`/`replay`/store) and `api.rs` (HTTP integration tests through the real router via `tower::ServiceExt::oneshot`, backed by an in-memory store). `tests/common/mod.rs` has helpers:
+Tests live in `backend/tests/`: `event_sourcing.rs` (unit tests for `apply`/`replay`/store), `api.rs` (HTTP integration tests through the real router via `tower::ServiceExt::oneshot`, backed by an in-memory store), and `effects.rs` (scene/sound pairing and audio durations). Tests that trigger scenes use `?silent=true` so `make test` never plays audio. `tests/common/mod.rs` has helpers:
 
 ```rust
 let app = test_app();                       // in-memory-backed router

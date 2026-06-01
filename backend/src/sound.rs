@@ -78,6 +78,16 @@ pub fn sounds_by_category() -> Vec<(&'static str, Vec<SoundName>)> {
     ]
 }
 
+/// Duration of a sound's audio file, if it exists and can be decoded. Used as
+/// the length hint for the lighting/overlay effect that accompanies it.
+pub fn duration(sound: SoundName) -> Option<std::time::Duration> {
+    use rodio::Source;
+    let path = sound_path(sound)?;
+    let file = File::open(&path).ok()?;
+    let decoder = rodio::Decoder::new(BufReader::new(file)).ok()?;
+    decoder.total_duration()
+}
+
 /// Locate the wav file for a sound, checking a few candidate asset locations.
 fn sound_path(sound: SoundName) -> Option<PathBuf> {
     let file = format!("{}.wav", sound.value());

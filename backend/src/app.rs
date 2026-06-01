@@ -16,6 +16,7 @@ use tracing::Level;
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 
+use crate::effects::EffectsEngine;
 use crate::error::{GameError, StoreError};
 use crate::event_store::EventStore;
 use crate::game_manager::GameManager;
@@ -29,6 +30,7 @@ pub struct AppState {
     pub manager: Arc<GameManager>,
     pub timer: Arc<TimerState>,
     pub lighting: Arc<LightingManager>,
+    pub effects: Arc<EffectsEngine>,
 }
 
 impl AppState {
@@ -44,10 +46,15 @@ impl AppState {
         let timer = Arc::new(TimerState::new(Arc::clone(&manager)));
         timer.spawn_ticker();
         let lighting = Arc::new(LightingManager::new());
+        let effects = Arc::new(EffectsEngine::new(
+            Arc::clone(&lighting),
+            Arc::clone(&manager),
+        ));
         AppState {
             manager,
             timer,
             lighting,
+            effects,
         }
     }
 }
@@ -207,7 +214,11 @@ pub fn build_router(state: AppState) -> Router {
         .route_service("/debug", ServeFile::new("static/debug.html"))
         .nest_service("/static", ServeDir::new("static"))
         // Serve the built frontend (if present) as a fallback so API routes win.
-        .fallback_service(ServeDir::new("static/app"))
+        // Unknown paths fall back to index.html (with a 200) so the SPA's
+        // client-side routes (e.g. /overlay) work when served from the backend.
+        .fallback_service(
+            ServeDir::new("static/app").fallback(ServeFile::new("static/app/index.html")),
+        )
         .with_state(state);
 
     router

@@ -16,8 +16,11 @@ use uuid::Uuid;
 
 use crate::app::{AppError, AppJson, AppResult, AppState};
 use crate::character::CharacterOut;
+use crate::effects::ActiveEffect;
 use crate::events::{describe_event, EventPayload};
-use crate::game_state::{game_state_to_included_role_outs, player_state_to_out, GameState};
+use crate::game_state::{
+    game_state_to_included_role_outs, player_state_to_out, ChoppingBlock, GameState,
+};
 use crate::night_step::NightStep;
 use crate::player::PlayerOut;
 use crate::routes::timer::TimerStateResponse;
@@ -38,6 +41,8 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(set_night_step))
         .routes(routes!(set_first_night))
         .routes(routes!(set_demon_bluffs))
+        .routes(routes!(set_chopping_block))
+        .routes(routes!(clear_chopping_block))
         .routes(routes!(get_game_history))
         .routes(routes!(rewind_game))
         .routes(routes!(fork_game))
@@ -63,6 +68,10 @@ pub struct GameStateBase {
     /// The Demon's bluffs (good characters shown as "not in play"), resolved to
     /// full character objects. Up to 3; empty if none set. Set via `POST /game/bluffs`.
     pub demon_bluffs: Vec<CharacterOut>,
+    /// The player currently on the chopping block, if any. Set via
+    /// `POST /game/chopping_block`; cleared automatically when that player dies
+    /// or is removed, or when night begins.
+    pub chopping_block: Option<ChoppingBlock>,
     /// Night steps for the current phase, filtered to roles in play.
     pub night_steps: Vec<NightStep>,
     pub living_player_count: usize,
@@ -93,6 +102,7 @@ pub fn game_state_base(state: &GameState) -> GameStateBase {
             .iter()
             .map(|c| c.to_out())
             .collect(),
+        chopping_block: state.chopping_block.clone(),
         night_steps: state.get_night_steps(),
         living_player_count: state.living_player_count(),
         execution_threshold: state.execution_threshold(),
@@ -100,12 +110,16 @@ pub fn game_state_base(state: &GameState) -> GameStateBase {
     }
 }
 
-/// Full `/game/state` response: the snapshot plus the timer.
+/// Full `/game/state` response: the snapshot plus ephemeral live state (timer,
+/// playing scene effect).
 #[derive(Serialize, ToSchema)]
 pub struct GameStateResponse {
     #[serde(flatten)]
     pub base: GameStateBase,
     pub timer: TimerStateResponse,
+    /// Scene effect currently playing (lights/sound), if any. The overlay runs
+    /// a matching visual whenever the effect's `id` changes.
+    pub active_effect: Option<ActiveEffect>,
 }
 
 pub async fn build_game_state_response(state: &AppState) -> AppResult<GameStateResponse> {
@@ -117,12 +131,13 @@ pub async fn build_game_state_response(state: &AppState) -> AppResult<GameStateR
     Ok(GameStateResponse {
         base: game_state_base(&game),
         timer,
+        active_effect: state.effects.active(),
     })
 }
 
-/// Build one SSE frame: the full game state plus the current timer (same shape
-/// as `GET /game/state`). The timer is read live so per-second timer broadcasts
-/// carry the updated countdown.
+/// Build one SSE frame: the full game state plus ephemeral live state (same
+/// shape as `GET /game/state`). The timer and active effect are read live so
+/// broadcasts carry the current countdown / playing scene.
 async fn sse_frame(game: &GameState, app: &AppState) -> String {
     let timer = TimerStateResponse {
         is_running: app.timer.get_is_running().await,
@@ -131,6 +146,7 @@ async fn sse_frame(game: &GameState, app: &AppState) -> String {
     let payload = GameStateResponse {
         base: game_state_base(game),
         timer,
+        active_effect: app.effects.active(),
     };
     serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string())
 }
@@ -360,6 +376,76 @@ async fn set_demon_bluffs(
         .manager
         .dispatch(EventPayload::DemonBluffsSet { bluffs: canonical })
         .await?;
+    Ok(Json(build_game_state_response(&state).await?))
+}
+
+// --- Chopping block ---
+
+#[derive(Deserialize, ToSchema)]
+pub struct SetChoppingBlockRequest {
+    /// Name of the player to put on the chopping block. Must be a living player
+    /// in the current game.
+    #[schema(example = "Alice")]
+    pub player_name: String,
+    /// Vote count that put the player on the block. Optional — record it if you
+    /// want it shown on the overlay.
+    #[schema(example = 4)]
+    pub votes: Option<u32>,
+}
+
+/// Put a player on the chopping block (up for execution).
+///
+/// Replaces any player already on the block. The block clears automatically
+/// when the player on it dies or is removed, or when night begins; it can also
+/// be cleared explicitly via `POST /game/chopping_block/clear`.
+#[utoipa::path(
+    post, path = "/game/chopping_block", tag = "Game",
+    request_body = SetChoppingBlockRequest,
+    responses(
+        (status = 200, description = "Chopping block set; full game state returned", body = GameStateResponse),
+        (status = 400, description = "Player is dead"),
+        (status = 404, description = "Player not found")
+    )
+)]
+async fn set_chopping_block(
+    State(state): State<AppState>,
+    AppJson(req): AppJson<SetChoppingBlockRequest>,
+) -> AppResult<Json<GameStateResponse>> {
+    let game = state.manager.get_state().await?;
+    let player = game
+        .get_player(&req.player_name)
+        .ok_or_else(|| AppError::not_found(format!("Player not found: {}", req.player_name)))?;
+    if !player.is_alive {
+        return Err(AppError::bad_request(format!(
+            "{} is dead and cannot be executed",
+            player.name
+        )));
+    }
+    state
+        .manager
+        .dispatch(EventPayload::ChoppingBlockSet {
+            player_name: player.name.clone(),
+            votes: req.votes,
+        })
+        .await?;
+    Ok(Json(build_game_state_response(&state).await?))
+}
+
+/// Clear the chopping block (e.g. a later nomination tied the vote count).
+///
+/// Safe to call when nothing is on the block — no event is recorded.
+#[utoipa::path(
+    post, path = "/game/chopping_block/clear", tag = "Game",
+    responses((status = 200, description = "Chopping block cleared; full game state returned", body = GameStateResponse))
+)]
+async fn clear_chopping_block(State(state): State<AppState>) -> AppResult<Json<GameStateResponse>> {
+    let game = state.manager.get_state().await?;
+    if game.chopping_block.is_some() {
+        state
+            .manager
+            .dispatch(EventPayload::ChoppingBlockCleared)
+            .await?;
+    }
     Ok(Json(build_game_state_response(&state).await?))
 }
 

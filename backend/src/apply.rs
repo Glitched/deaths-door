@@ -2,7 +2,7 @@
 
 use crate::error::GameError;
 use crate::events::{EventPayload, GameEvent};
-use crate::game_state::{GameState, PlayerState};
+use crate::game_state::{ChoppingBlock, GameState, PlayerState};
 
 fn normalize(s: &str) -> String {
     s.to_lowercase().trim().to_string()
@@ -28,6 +28,11 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
         EventPayload::NightStepSet { step } => {
             let mut next = state.clone();
             next.current_night_step = step.clone();
+            // The chopping block only exists during the day; entering night
+            // (any step other than "Dawn") resolves it.
+            if step.as_str() != "Dawn" {
+                next.chopping_block = None;
+            }
             next.version += 1;
             next
         }
@@ -36,6 +41,7 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
             let mut next = state.clone();
             next.is_first_night = *is_first_night;
             next.current_night_step = "Dusk".to_string();
+            next.chopping_block = None;
             next.version += 1;
             next
         }
@@ -108,12 +114,18 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
                 let removed = next.players.remove(idx);
                 next.included_role_names.push(removed.character_name);
             }
+            clear_chopping_block_for(&mut next, player_name);
             next.version += 1;
             next
         }
 
         EventPayload::PlayerRenamed { old_name, new_name } => {
             let mut next = state.replace_player(old_name, |p| p.name = new_name.clone());
+            if let Some(block) = &mut next.chopping_block {
+                if &block.player_name == old_name {
+                    block.player_name = new_name.clone();
+                }
+            }
             next.version += 1;
             next
         }
@@ -145,6 +157,10 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
                 next = next.replace_player(target_name, |p| {
                     p.status_effects.retain(|e| e != effect);
                 });
+            }
+            // A dead player can't be executed; their block resolves.
+            if !*is_alive {
+                clear_chopping_block_for(&mut next, player_name);
             }
             next.version += 1;
             next
@@ -199,6 +215,34 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
             next.version += 1;
             next
         }
+
+        EventPayload::ChoppingBlockSet { player_name, votes } => {
+            let mut next = state.clone();
+            next.chopping_block = Some(ChoppingBlock {
+                player_name: player_name.clone(),
+                votes: *votes,
+            });
+            next.version += 1;
+            next
+        }
+
+        EventPayload::ChoppingBlockCleared => {
+            let mut next = state.clone();
+            next.chopping_block = None;
+            next.version += 1;
+            next
+        }
+    }
+}
+
+/// Clear the chopping block if `player_name` is the player on it.
+fn clear_chopping_block_for(state: &mut GameState, player_name: &str) {
+    if state
+        .chopping_block
+        .as_ref()
+        .is_some_and(|b| b.player_name == player_name)
+    {
+        state.chopping_block = None;
     }
 }
 

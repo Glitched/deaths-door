@@ -19,6 +19,19 @@ export interface PlayerOut {
   status_effects: string[];
 }
 
+export interface ChoppingBlock {
+  player_name: string;
+  votes: number | null;
+}
+
+/** A scene effect (lights + sound) currently playing on the physical rig. */
+export interface ActiveEffect {
+  /** Increments on every trigger; replay the visual when this changes. */
+  id: number;
+  scene: string;
+  duration_ms: number;
+}
+
 export interface GameState {
   script_name: string;
   players: PlayerOut[];
@@ -27,6 +40,8 @@ export interface GameState {
   dead_players_with_vote: string[];
   current_night_step: string;
   is_first_night: boolean;
+  chopping_block: ChoppingBlock | null;
+  active_effect: ActiveEffect | null;
   timer: TimerState;
 }
 

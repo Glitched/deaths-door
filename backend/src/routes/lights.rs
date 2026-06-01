@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -11,8 +11,8 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::app::{AppError, AppJson, AppResult, AppState};
+use crate::effects::{paired_sound, ActiveEffect};
 use crate::lighting::LightingScene;
-use crate::sound::{SoundFx, SoundName};
 
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -78,51 +78,75 @@ async fn list_scenes(State(state): State<AppState>) -> Json<SceneListResponse> {
     })
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct SceneQuery {
+    /// Skip the scene's paired sound effect (lights and overlay only).
+    #[serde(default)]
+    pub silent: bool,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct SceneTriggerResponse {
+    pub status: String,
+    /// The effect now playing (its id, scene, and duration). The same object
+    /// appears in `/game/state` and SSE frames while it plays.
+    pub effect: ActiveEffect,
+    /// The paired sound that was played, if any.
+    pub sound: Option<String>,
+}
+
+/// Trigger a scene: timed lighting sequence + paired sound + overlay visual.
+///
+/// The effect's length follows its sound's audio duration (e.g. the death sting
+/// is ~1.5s; the goodnight music box is ~13s). Pass `?silent=true` to skip the
+/// sound. Scene/sound pairs: death→death, drama→drama, goodnight→music_box,
+/// morning→rooster, reveal→drumroll.
 #[utoipa::path(
     post, path = "/lights/scene/{name}", tag = "Lighting",
-    params(("name" = String, Path, description = "Scene name, e.g. death/drama/blackout")),
+    params(
+        ("name" = String, Path, description = "Scene name, e.g. death/drama/blackout"),
+        ("silent" = Option<bool>, Query, description = "Skip the paired sound effect")
+    ),
     responses(
-        (status = 200, description = "Scene triggered", body = OperationResponse),
+        (status = 200, description = "Scene triggered", body = SceneTriggerResponse),
         (status = 404, description = "Scene not found")
     )
 )]
 async fn trigger_scene(
     State(state): State<AppState>,
     Path(name): Path<String>,
-) -> AppResult<Json<OperationResponse>> {
-    if LightingScene::from_str(&name).is_none() {
-        return Err(AppError::not_found(format!("Scene '{name}' not found")));
-    }
-    state.lighting.trigger_scene(&name);
-    Ok(ok(format!("Scene '{name}' triggered successfully")))
+    Query(query): Query<SceneQuery>,
+) -> AppResult<Json<SceneTriggerResponse>> {
+    let scene = LightingScene::from_str(&name)
+        .ok_or_else(|| AppError::not_found(format!("Scene '{name}' not found")))?;
+    let sound = if query.silent {
+        None
+    } else {
+        paired_sound(scene)
+    };
+    let effect = state.effects.trigger(scene, query.silent).await;
+    Ok(Json(SceneTriggerResponse {
+        status: "success".to_string(),
+        effect,
+        sound: sound.map(|s| s.value().to_string()),
+    }))
 }
 
-/// Trigger a lighting scene plus its matching sound effect if one exists.
+/// Deprecated alias for `POST /lights/scene/{name}`, which now plays the paired
+/// sound by default.
 #[utoipa::path(
     post, path = "/lights/scene/integrated/{name}", tag = "Lighting",
     params(("name" = String, Path, description = "Scene name")),
     responses(
-        (status = 200, description = "Integrated scene triggered", body = OperationResponse),
+        (status = 200, description = "Scene triggered", body = SceneTriggerResponse),
         (status = 404, description = "Scene not found")
     )
 )]
 async fn trigger_integrated_scene(
-    State(state): State<AppState>,
-    Path(name): Path<String>,
-) -> AppResult<Json<OperationResponse>> {
-    if LightingScene::from_str(&name).is_none() {
-        return Err(AppError::not_found(format!("Scene '{name}' not found")));
-    }
-    state.lighting.trigger_scene(&name);
-    if let Some(sound) = SoundName::from_str(&name) {
-        // Best-effort (the scene is lighting-primary); off the async worker.
-        tokio::task::spawn_blocking(move || {
-            let _ = SoundFx::new().play(sound);
-        });
-    }
-    Ok(ok(format!(
-        "Integrated scene '{name}' triggered successfully"
-    )))
+    state: State<AppState>,
+    name: Path<String>,
+) -> AppResult<Json<SceneTriggerResponse>> {
+    trigger_scene(state, name, Query(SceneQuery { silent: false })).await
 }
 
 #[derive(Deserialize, ToSchema)]

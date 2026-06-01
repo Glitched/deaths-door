@@ -80,6 +80,12 @@ pub enum EventPayload {
     DemonBluffsSet {
         bluffs: Vec<String>,
     },
+    ChoppingBlockSet {
+        player_name: String,
+        #[serde(default)]
+        votes: Option<u32>,
+    },
+    ChoppingBlockCleared,
 }
 
 impl EventPayload {
@@ -104,6 +110,8 @@ impl EventPayload {
             EventPayload::StatusEffectAdded { .. } => "status_effect_added",
             EventPayload::StatusEffectRemoved { .. } => "status_effect_removed",
             EventPayload::DemonBluffsSet { .. } => "demon_bluffs_set",
+            EventPayload::ChoppingBlockSet { .. } => "chopping_block_set",
+            EventPayload::ChoppingBlockCleared => "chopping_block_cleared",
         }
     }
 }
@@ -225,5 +233,10 @@ pub fn describe_event(payload: &EventPayload) -> String {
                 format!("Demon bluffs set to {}", bluffs.join(", "))
             }
         }
+        EventPayload::ChoppingBlockSet { player_name, votes } => match votes {
+            Some(votes) => format!("{player_name} is on the chopping block with {votes} votes"),
+            None => format!("{player_name} is on the chopping block"),
+        },
+        EventPayload::ChoppingBlockCleared => "Chopping block cleared".to_string(),
     }
 }

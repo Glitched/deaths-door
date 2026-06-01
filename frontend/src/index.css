@@ -143,3 +143,74 @@
   0% { color: #FF6262; }
   100% { color: #62BDFF; }
 }
+
+/* --- Scene effect overlays --------------------------------------------- */
+/* Full-screen visuals played by EffectOverlay when a lighting scene fires.  */
+/* animation-duration is set inline per effect (it follows the sound's       */
+/* length), so keyframes are written in percentages of the whole effect.     */
+
+[class^="effect-"], [class*=" effect-"] {
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+/* Death: hard red flash that decays into darkness. */
+.effect-death {
+  animation-name: effect-flash-fade;
+  background: radial-gradient(ellipse at center, rgba(255, 0, 0, 0.25) 20%, rgba(120, 0, 0, 0.95));
+}
+@keyframes effect-flash-fade {
+  0% { opacity: 0; }
+  8% { opacity: 1; }
+  55% { opacity: 0.85; }
+  100% { opacity: 0; }
+}
+
+/* Drama: two slow blood-red pulses. */
+.effect-drama {
+  animation-name: effect-pulse;
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(170, 0, 50, 0.85));
+}
+@keyframes effect-pulse {
+  0%, 100% { opacity: 0; }
+  20%, 70% { opacity: 1; }
+  45% { opacity: 0.35; }
+}
+
+/* Goodnight: deep blue night wash, holds while the music box plays. */
+.effect-goodnight {
+  animation-name: effect-fade-in-out;
+  background: linear-gradient(to bottom, rgba(15, 25, 90, 0.8), rgba(0, 0, 35, 0.92));
+}
+
+/* Morning: warm sunrise glow rising from the bottom of the wall. */
+.effect-morning {
+  animation-name: effect-fade-in-out;
+  background: linear-gradient(to top, rgba(255, 150, 40, 0.75), rgba(255, 220, 130, 0.3) 55%, transparent);
+}
+
+/* Fog: grey mist creeping up. */
+.effect-fog {
+  animation-name: effect-fade-in-out;
+  background: linear-gradient(to top, rgba(165, 165, 175, 0.8), rgba(120, 120, 135, 0.35) 65%, transparent);
+}
+
+@keyframes effect-fade-in-out {
+  0% { opacity: 0; }
+  15%, 80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Reveal: tension builds dim and red, then a white-gold burst at the climax
+   (timed to the end of the drumroll). */
+.effect-reveal {
+  animation-name: effect-climax;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.95), rgba(255, 200, 90, 0.75));
+}
+@keyframes effect-climax {
+  0% { opacity: 0; }
+  70% { opacity: 0.12; }
+  86% { opacity: 0.3; }
+  93% { opacity: 1; }
+  100% { opacity: 0; }
+}

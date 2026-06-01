@@ -31,6 +31,18 @@ const LIGHT1_START: usize = 1;
 const LIGHT2_START: usize = 12;
 const FOG_START: usize = 23;
 
+/// Color-wheel positions for the moving heads (from the fixture manual via the
+/// original Python implementation; 10-139 are fixed colors, 140+ auto-cycles).
+pub mod colors {
+    pub const WHITE: i64 = 10;
+    pub const RED: i64 = 20;
+    /// Unverified wheel positions used by the drama scene since the Python days.
+    pub const DRAMA_A: i64 = 30;
+    pub const DRAMA_B: i64 = 40;
+    pub const BLUE: i64 = 60;
+    pub const AUTO_CYCLE: i64 = 140;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LightingScene {
     Death,
@@ -318,37 +330,26 @@ impl LightingManager {
         }
     }
 
-    pub fn trigger_scene(&self, scene_name: &str) {
-        let Some(scene) = LightingScene::from_str(scene_name) else {
-            tracing::warn!("Unknown scene: {scene_name}");
-            return;
-        };
-        if scene == LightingScene::Blackout {
-            self.blackout();
-            return;
-        }
-
+    /// Set color/dimmer/strobe on both moving heads at once. Heads can differ
+    /// in color for asymmetric looks (e.g. the drama scene).
+    pub fn set_heads(&self, colors: (i64, i64), dimmer: i64, strobe: i64) {
         let mut inner = self.inner.lock_recover();
         let Some(controller) = inner.controller.as_mut() else {
             return;
         };
-        tracing::info!("Triggering scene: {scene_name}");
+        apply_light(controller, LIGHT1_START, (colors.0, dimmer, strobe));
+        apply_light(controller, LIGHT2_START, (colors.1, dimmer, strobe));
+        controller.render();
+    }
 
-        // (color, dimmer, strobe) applied to both moving heads.
-        let settings: Option<[(i64, i64, i64); 2]> = match scene {
-            LightingScene::Death => Some([(20, 255, 0), (20, 255, 0)]),
-            LightingScene::Drama => Some([(30, 200, 50), (40, 200, 50)]),
-            LightingScene::Goodnight => Some([(60, 100, 0), (60, 100, 0)]),
-            LightingScene::Morning => Some([(10, 255, 0), (10, 255, 0)]),
-            LightingScene::Reveal => Some([(140, 255, 0), (140, 255, 0)]),
-            _ => None,
+    /// Set the fog machine output (0 = off, 255 = full).
+    pub fn set_fog(&self, intensity: i64) {
+        let mut inner = self.inner.lock_recover();
+        let Some(controller) = inner.controller.as_mut() else {
+            return;
         };
-
-        if let Some([s1, s2]) = settings {
-            apply_light(controller, LIGHT1_START, s1);
-            apply_light(controller, LIGHT2_START, s2);
-            controller.render();
-        }
+        controller.set_channel(FOG_START, intensity);
+        controller.render();
     }
 }
 
