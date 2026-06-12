@@ -22,6 +22,9 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    // Fail at boot, not on the first request, if the embedded data is corrupt.
+    deaths_door::scripts::preload()?;
+
     let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "games.db".to_string());
     let state = AppState::new(&db_path)?;
     let app = build_router(state);

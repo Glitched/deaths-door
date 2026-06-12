@@ -1,16 +1,19 @@
 //! Game manager with event-sourcing dispatch pattern.
 //!
-//! All mutations go through [`GameManager::dispatch`], which atomically:
-//! 1. Creates an event from the payload,
-//! 2. Applies it to produce a new state (validating),
-//! 3. Persists the event to SQLite,
-//! 4. Updates the in-memory cache and notifies SSE subscribers.
+//! All mutations go through [`GameManager::dispatch`] (or
+//! [`GameManager::dispatch_with`] when the payload depends on current state),
+//! which atomically, under the state lock:
+//! 1. Builds an event from the payload,
+//! 2. Validates it against the exact state it will be applied to,
+//! 3. Applies it to produce a new state,
+//! 4. Persists the event to SQLite,
+//! 5. Updates the in-memory cache and notifies SSE subscribers.
 
 use chrono::Utc;
 use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
-use crate::apply::{apply, replay};
+use crate::apply::{apply, replay, validate};
 use crate::error::GameError;
 use crate::event_store::EventStore;
 use crate::events::{EventPayload, GameEvent};
@@ -66,12 +69,24 @@ impl GameManager {
         self.inner.lock().await.state.is_some()
     }
 
-    /// Atomically apply and persist an event. Returns the new state.
+    /// Atomically validate, apply, and persist an event. Returns the new state.
     pub async fn dispatch(&self, payload: EventPayload) -> Result<GameState, GameError> {
+        self.dispatch_with(|_| Ok(payload)).await
+    }
+
+    /// Like [`Self::dispatch`], but builds the payload from the current state
+    /// while holding the state lock. Use this whenever the payload depends on
+    /// current state (e.g. drawing a random role from the pool), so concurrent
+    /// dispatches can't act on a stale snapshot.
+    pub async fn dispatch_with<F>(&self, build: F) -> Result<GameState, GameError>
+    where
+        F: FnOnce(&GameState) -> Result<EventPayload, GameError>,
+    {
         let mut inner = self.inner.lock().await;
         let current = inner.state.clone().ok_or(GameError::NoActiveGame)?;
+        let payload = build(&current)?;
+        validate(&current, &payload)?;
         let event = GameEvent::new(current.game_id, current.version, payload);
-        // Apply first to validate, then persist only after a successful apply.
         let new_state = apply(&current, &event);
         inner.store.append(&event)?;
         inner.state = Some(new_state.clone());

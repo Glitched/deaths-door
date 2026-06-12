@@ -411,20 +411,13 @@ async fn set_chopping_block(
     State(state): State<AppState>,
     AppJson(req): AppJson<SetChoppingBlockRequest>,
 ) -> AppResult<Json<GameStateResponse>> {
-    let game = state.manager.get_state().await?;
-    let player = game
-        .get_player(&req.player_name)
-        .ok_or_else(|| AppError::not_found(format!("Player not found: {}", req.player_name)))?;
-    if !player.is_alive {
-        return Err(AppError::bad_request(format!(
-            "{} is dead and cannot be executed",
-            player.name
-        )));
-    }
+    // Ensure a game exists; player existence and aliveness are validated
+    // inside dispatch, against the exact state the event applies to.
+    state.manager.get_state().await?;
     state
         .manager
         .dispatch(EventPayload::ChoppingBlockSet {
-            player_name: player.name.clone(),
+            player_name: req.player_name.clone(),
             votes: req.votes,
         })
         .await?;

@@ -17,8 +17,16 @@ struct GameData {
     scripts: HashMap<String, Script>,
 }
 
-static DATA: Lazy<GameData> =
-    Lazy::new(|| serde_json::from_str(DATA_JSON).expect("embedded botc_data.json must be valid"));
+static DATA: Lazy<Result<GameData, serde_json::Error>> =
+    Lazy::new(|| serde_json::from_str(DATA_JSON));
+
+/// Force the embedded data to parse, so a corrupt `botc_data.json` fails at
+/// boot with a clear error instead of on the first request.
+pub fn preload() -> Result<(), String> {
+    DATA.as_ref()
+        .map(|_| ())
+        .map_err(|e| format!("embedded botc_data.json is invalid: {e}"))
+}
 
 /// Return the [`Script`] for a given name value, or `None` if it has no data.
 ///
@@ -27,7 +35,7 @@ static DATA: Lazy<GameData> =
 /// populated for Trouble Brewing so far.
 pub fn get_script_by_name(name: &str) -> Option<&'static Script> {
     let script_name = ScriptName::from_str(name)?;
-    DATA.scripts.get(script_name.value())
+    DATA.as_ref().ok()?.scripts.get(script_name.value())
 }
 
 #[cfg(test)]
@@ -39,6 +47,7 @@ mod tests {
     /// checks the expected role counts for each wired-up edition.
     #[test]
     fn embedded_data_parses_and_is_well_formed() {
+        preload().expect("embedded botc_data.json must parse");
         // (script id, expected character count, expected traveler count)
         let expected = [
             ("trouble_brewing", 22, 5),

@@ -1,10 +1,13 @@
-//! Unit tests for the event-sourcing core: apply, replay, game state, store.
+//! Unit tests for the event-sourcing core: validate, apply, replay, game
+//! state, store.
 
 use uuid::Uuid;
 
-use deaths_door::apply::{apply, replay};
+use deaths_door::apply::{apply, replay, validate};
+use deaths_door::error::GameError;
 use deaths_door::event_store::EventStore;
 use deaths_door::events::{describe_event, EventPayload, GameEvent};
+use deaths_door::game_manager::GameManager;
 use deaths_door::game_state::{ChoppingBlock, GameState};
 
 fn evt(state: &GameState, payload: EventPayload) -> GameEvent {
@@ -531,6 +534,159 @@ fn describe_event_is_human_readable() {
         cleared_effects: vec![],
     };
     assert_eq!(describe_event(&p), "Yash died");
+}
+
+// --- Dispatch-time validation ---
+
+fn player_added(name: &str, role: &str) -> EventPayload {
+    EventPayload::PlayerAdded {
+        player_name: name.to_string(),
+        character_name: role.to_string(),
+        alignment: "evil".to_string(),
+    }
+}
+
+#[test]
+fn validate_rejects_duplicate_player_and_drawn_role() {
+    let state = game_with_roles(&["Imp", "Chef"]);
+    let state = add_player(&state, "Alice", "Imp", "evil");
+
+    // Same name again -> Conflict, even with a free role.
+    assert!(matches!(
+        validate(&state, &player_added("Alice", "Chef")),
+        Err(GameError::Conflict(_))
+    ));
+    // Imp was drawn from the pool when Alice joined -> InvalidInput.
+    assert!(matches!(
+        validate(&state, &player_added("Bob", "Imp")),
+        Err(GameError::InvalidInput(_))
+    ));
+    // A fresh name and a pooled role is fine.
+    assert!(validate(&state, &player_added("Bob", "Chef")).is_ok());
+}
+
+#[test]
+fn validate_rejects_chopping_block_for_dead_or_unknown_player() {
+    let state = game_with_roles(&["Imp", "Chef"]);
+    let state = add_player(&state, "Alice", "Imp", "evil");
+
+    let block = EventPayload::ChoppingBlockSet {
+        player_name: "Alice".to_string(),
+        votes: None,
+    };
+    assert!(validate(&state, &block).is_ok());
+
+    let state = apply(
+        &state,
+        &evt(
+            &state,
+            EventPayload::PlayerAliveSet {
+                player_name: "Alice".to_string(),
+                is_alive: false,
+                cleared_effects: vec![],
+            },
+        ),
+    );
+    assert!(matches!(
+        validate(&state, &block),
+        Err(GameError::InvalidInput(_))
+    ));
+    assert!(matches!(
+        validate(
+            &state,
+            &EventPayload::ChoppingBlockSet {
+                player_name: "Ghost".to_string(),
+                votes: None,
+            }
+        ),
+        Err(GameError::NotFound(_))
+    ));
+}
+
+#[test]
+fn validate_rejects_rename_collision() {
+    let state = game_with_roles(&["Imp", "Chef"]);
+    let state = add_player(&state, "Alice", "Imp", "evil");
+    let state = add_player(&state, "Bob", "Chef", "good");
+
+    assert!(matches!(
+        validate(
+            &state,
+            &EventPayload::PlayerRenamed {
+                old_name: "Bob".to_string(),
+                new_name: "Alice".to_string(),
+            }
+        ),
+        Err(GameError::Conflict(_))
+    ));
+    // Renaming a player to their current name is a no-op, not a collision.
+    assert!(validate(
+        &state,
+        &EventPayload::PlayerRenamed {
+            old_name: "Bob".to_string(),
+            new_name: "Bob".to_string(),
+        }
+    )
+    .is_ok());
+}
+
+#[test]
+fn validate_rejects_blank_or_misaddressed_status_effects() {
+    let state = game_with_roles(&["Imp"]);
+    let state = add_player(&state, "Alice", "Imp", "evil");
+
+    assert!(matches!(
+        validate(
+            &state,
+            &EventPayload::StatusEffectAdded {
+                player_name: "Alice".to_string(),
+                effect: "   ".to_string(),
+            }
+        ),
+        Err(GameError::InvalidInput(_))
+    ));
+    assert!(matches!(
+        validate(
+            &state,
+            &EventPayload::StatusEffectAdded {
+                player_name: "Ghost".to_string(),
+                effect: "Poisoned".to_string(),
+            }
+        ),
+        Err(GameError::NotFound(_))
+    ));
+}
+
+#[tokio::test]
+async fn dispatch_validates_and_rejected_events_leave_no_trace() {
+    let manager = GameManager::new(EventStore::in_memory().unwrap());
+    manager.create_game("trouble_brewing").await.unwrap();
+    manager
+        .dispatch(EventPayload::RolesIncluded {
+            names: vec!["Imp".to_string()],
+        })
+        .await
+        .unwrap();
+    manager
+        .dispatch(player_added("Alice", "Imp"))
+        .await
+        .unwrap();
+
+    // Duplicate name -> Conflict; role already drawn -> InvalidInput.
+    assert!(matches!(
+        manager.dispatch(player_added("Alice", "Imp")).await,
+        Err(GameError::Conflict(_))
+    ));
+    assert!(matches!(
+        manager.dispatch(player_added("Bob", "Imp")).await,
+        Err(GameError::InvalidInput(_))
+    ));
+
+    // Rejected events must not mutate state or be persisted.
+    let state = manager.state().await.unwrap();
+    assert_eq!(state.players.len(), 1);
+    let history = manager.get_history().await.unwrap();
+    assert_eq!(history.len() as i64, state.version);
 }
 
 // --- Event store ---

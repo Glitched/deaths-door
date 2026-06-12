@@ -12,9 +12,11 @@ use utoipa_axum::routes;
 
 use crate::alignment::Alignment;
 use crate::app::{AppError, AppJson, AppResult, AppState};
+use crate::error::GameError;
 use crate::events::EventPayload;
 use crate::game_state::{player_state_to_out, GameState, PlayerState};
 use crate::player::PlayerOut;
+use crate::status_effect::compute_death_cleared_effects;
 
 const ROLE_REVEAL_TIMEOUT_ATTEMPTS: u32 = 100;
 const POLLING_INTERVAL_MS: u64 = 100;
@@ -54,36 +56,6 @@ fn to_out(state: &GameState, name: &str) -> AppResult<PlayerOut> {
     Ok(player_state_to_out(player, script))
 }
 
-/// Persistent status effects to clear when a character dies (death cleanup).
-fn character_persistent_effects(character_name: &str) -> &'static [&'static str] {
-    match character_name {
-        "Poisoner" => &["Poisoned"],
-        "Monk" => &["Safe"],
-        "Butler" => &["Butler's Master"],
-        _ => &[],
-    }
-}
-
-/// Cascading status-effect removals when a player dies.
-fn compute_death_cleared_effects(state: &GameState, player_name: &str) -> Vec<(String, String)> {
-    let Some(player) = state.get_player(player_name) else {
-        return Vec::new();
-    };
-    let effects_to_remove = character_persistent_effects(&player.character_name);
-    if effects_to_remove.is_empty() {
-        return Vec::new();
-    }
-    let mut cleared = Vec::new();
-    for p in &state.players {
-        for effect in effects_to_remove {
-            if p.status_effects.iter().any(|e| e == effect) {
-                cleared.push((p.name.clone(), effect.to_string()));
-            }
-        }
-    }
-    cleared
-}
-
 async fn push_counts(state: &AppState, game: &GameState) {
     let alive = game.living_player_count() as i64;
     let total = game.players.len() as i64;
@@ -112,37 +84,34 @@ async fn add_player(
     State(state): State<AppState>,
     AppJson(req): AppJson<AddPlayerRequest>,
 ) -> AppResult<Json<PlayerOut>> {
-    let game = state.manager.get_state().await?;
+    // Ensure a game exists (auto-creates/loads on first use).
+    state.manager.get_state().await?;
 
-    if game.get_player(&req.name).is_some() {
-        return Err(AppError::conflict(format!(
-            "Player with name {} already exists.",
-            req.name
-        )));
-    }
-    if game.included_role_names.is_empty() {
-        return Err(AppError::bad_request("No roles to assign"));
-    }
-
-    // Resolve randomness BEFORE creating the event.
-    let chosen = game
-        .included_role_names
-        .choose(&mut rand::thread_rng())
-        .cloned()
-        .ok_or_else(|| AppError::bad_request("No roles to assign"))?;
-    let script = game
-        .get_script()
-        .ok_or_else(|| AppError::internal("No script loaded"))?;
-    let character = script
-        .get_character(&chosen)
-        .ok_or_else(|| AppError::bad_request(format!("Character not found: {chosen}")))?;
-
+    // Build the payload under the dispatch lock: the duplicate-name check and
+    // the random draw from the pool see the exact state the event applies to,
+    // so concurrent adds can't reuse a name or draw the same role.
     let new_state = state
         .manager
-        .dispatch(EventPayload::PlayerAdded {
-            player_name: req.name.clone(),
-            character_name: character.name.clone(),
-            alignment: character.alignment.as_str().to_string(),
+        .dispatch_with(|game| {
+            if game.included_role_names.is_empty() {
+                return Err(GameError::InvalidInput("No roles to assign".to_string()));
+            }
+            let chosen = game
+                .included_role_names
+                .choose(&mut rand::thread_rng())
+                .cloned()
+                .ok_or_else(|| GameError::InvalidInput("No roles to assign".to_string()))?;
+            let script = game
+                .get_script()
+                .ok_or_else(|| GameError::InvalidInput("No script loaded".to_string()))?;
+            let character = script
+                .get_character(&chosen)
+                .ok_or_else(|| GameError::InvalidInput(format!("Character not found: {chosen}")))?;
+            Ok(EventPayload::PlayerAdded {
+                player_name: req.name.clone(),
+                character_name: character.name.clone(),
+                alignment: character.alignment.as_str().to_string(),
+            })
         })
         .await?;
     push_counts(&state, &new_state).await;
@@ -169,29 +138,24 @@ async fn add_player_as_traveler(
     State(state): State<AppState>,
     AppJson(req): AppJson<AddTravelerRequest>,
 ) -> AppResult<Json<PlayerOut>> {
-    let game = state.manager.get_state().await?;
-
-    if game.get_player(&req.name).is_some() {
-        return Err(AppError::conflict(format!(
-            "Player with name {} already exists.",
-            req.name
-        )));
-    }
-
-    let unclaimed = game.get_unclaimed_travelers();
-    let traveler = unclaimed
-        .into_iter()
-        .find(|t| t.name == req.traveler)
-        .ok_or_else(|| {
-            AppError::not_found(format!("Traveler not found or in game: {}", req.traveler))
-        })?;
+    // Ensure a game exists (auto-creates/loads on first use).
+    state.manager.get_state().await?;
 
     let new_state = state
         .manager
-        .dispatch(EventPayload::TravelerAdded {
-            player_name: req.name.clone(),
-            traveler_name: traveler.name.clone(),
-            alignment: traveler.alignment.as_str().to_string(),
+        .dispatch_with(|game| {
+            let traveler = game
+                .get_unclaimed_travelers()
+                .into_iter()
+                .find(|t| t.name == req.traveler)
+                .ok_or_else(|| {
+                    GameError::NotFound(format!("Traveler not found or in game: {}", req.traveler))
+                })?;
+            Ok(EventPayload::TravelerAdded {
+                player_name: req.name.clone(),
+                traveler_name: traveler.name.clone(),
+                alignment: traveler.alignment.as_str().to_string(),
+            })
         })
         .await?;
     push_counts(&state, &new_state).await;
@@ -275,21 +239,27 @@ async fn set_player_alive(
     State(state): State<AppState>,
     AppJson(req): AppJson<SetPlayerAliveRequest>,
 ) -> AppResult<Json<PlayerOut>> {
-    let game = state.manager.get_state().await?;
-    let player = get_player_or_404(&game, &req.name)?;
+    // Ensure a game exists (auto-creates/loads on first use).
+    state.manager.get_state().await?;
 
-    let cleared_effects = if player.is_alive && !req.is_alive {
-        compute_death_cleared_effects(&game, &req.name)
-    } else {
-        Vec::new()
-    };
-
+    // Compute cascading effect removals under the dispatch lock, against the
+    // exact state the event applies to.
     let new_state = state
         .manager
-        .dispatch(EventPayload::PlayerAliveSet {
-            player_name: req.name.clone(),
-            is_alive: req.is_alive,
-            cleared_effects,
+        .dispatch_with(|game| {
+            let player = game
+                .get_player(&req.name)
+                .ok_or_else(|| GameError::NotFound(format!("Player not found: {}", req.name)))?;
+            let cleared_effects = if player.is_alive && !req.is_alive {
+                compute_death_cleared_effects(game, &req.name)
+            } else {
+                Vec::new()
+            };
+            Ok(EventPayload::PlayerAliveSet {
+                player_name: req.name.clone(),
+                is_alive: req.is_alive,
+                cleared_effects,
+            })
         })
         .await?;
     push_counts(&state, &new_state).await;
@@ -315,8 +285,8 @@ async fn set_player_has_used_dead_vote(
     State(state): State<AppState>,
     AppJson(req): AppJson<SetDeadVoteRequest>,
 ) -> AppResult<Json<PlayerOut>> {
-    let game = state.manager.get_state().await?;
-    get_player_or_404(&game, &req.name)?;
+    // Ensure a game exists; player existence is validated inside dispatch.
+    state.manager.get_state().await?;
 
     let new_state = state
         .manager
@@ -347,8 +317,8 @@ async fn set_player_alignment(
     State(state): State<AppState>,
     AppJson(req): AppJson<SetAlignmentRequest>,
 ) -> AppResult<Json<PlayerOut>> {
-    let game = state.manager.get_state().await?;
-    get_player_or_404(&game, &req.name)?;
+    // Ensure a game exists; player existence is validated inside dispatch.
+    state.manager.get_state().await?;
 
     let new_state = state
         .manager
@@ -386,9 +356,8 @@ async fn swap_character(
     State(state): State<AppState>,
     AppJson(req): AppJson<SwapCharacterRequest>,
 ) -> AppResult<Json<SwapCharacterResponse>> {
-    let game = state.manager.get_state().await?;
-    get_player_or_404(&game, &req.name1)?;
-    get_player_or_404(&game, &req.name2)?;
+    // Ensure a game exists; player existence is validated inside dispatch.
+    state.manager.get_state().await?;
 
     let new_state = state
         .manager
@@ -416,15 +385,17 @@ pub struct RenamePlayerRequest {
     request_body = RenamePlayerRequest,
     responses(
         (status = 200, description = "Player renamed", body = PlayerOut),
-        (status = 404, description = "Player not found")
+        (status = 404, description = "Player not found"),
+        (status = 409, description = "New name already taken")
     )
 )]
 async fn rename_player(
     State(state): State<AppState>,
     AppJson(req): AppJson<RenamePlayerRequest>,
 ) -> AppResult<Json<PlayerOut>> {
-    let game = state.manager.get_state().await?;
-    get_player_or_404(&game, &req.name)?;
+    // Ensure a game exists; player existence and new-name uniqueness are
+    // validated inside dispatch.
+    state.manager.get_state().await?;
 
     let new_state = state
         .manager
@@ -460,8 +431,8 @@ async fn remove_player(
     State(state): State<AppState>,
     AppJson(req): AppJson<RemovePlayerRequest>,
 ) -> AppResult<Json<RemovePlayerResponse>> {
-    let game = state.manager.get_state().await?;
-    get_player_or_404(&game, &req.name)?;
+    // Ensure a game exists; player existence is validated inside dispatch.
+    state.manager.get_state().await?;
 
     let new_state = state
         .manager
@@ -532,6 +503,7 @@ pub struct StatusEffectRequest {
     request_body = StatusEffectRequest,
     responses(
         (status = 200, description = "Player updated", body = PlayerOut),
+        (status = 400, description = "Blank status effect name"),
         (status = 404, description = "Player not found")
     )
 )]
@@ -539,8 +511,9 @@ async fn add_status_effect(
     State(state): State<AppState>,
     AppJson(req): AppJson<StatusEffectRequest>,
 ) -> AppResult<Json<PlayerOut>> {
-    let game = state.manager.get_state().await?;
-    get_player_or_404(&game, &req.name)?;
+    // Ensure a game exists; player existence and a non-blank effect name are
+    // validated inside dispatch.
+    state.manager.get_state().await?;
 
     let new_state = state
         .manager
@@ -565,8 +538,8 @@ async fn remove_status_effect(
     State(state): State<AppState>,
     AppJson(req): AppJson<StatusEffectRequest>,
 ) -> AppResult<Json<PlayerOut>> {
-    let game = state.manager.get_state().await?;
-    get_player_or_404(&game, &req.name)?;
+    // Ensure a game exists; player existence is validated inside dispatch.
+    state.manager.get_state().await?;
 
     let new_state = state
         .manager

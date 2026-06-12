@@ -101,9 +101,11 @@ impl From<GameError> for AppError {
     fn from(err: GameError) -> Self {
         match err {
             // Validation failures the caller can fix.
-            GameError::InvalidVersion(_) | GameError::GameNotFound(_) => {
-                AppError::bad_request(err.to_string())
-            }
+            GameError::InvalidVersion(_)
+            | GameError::GameNotFound(_)
+            | GameError::InvalidInput(_) => AppError::bad_request(err.to_string()),
+            GameError::NotFound(_) => AppError::not_found(err.to_string()),
+            GameError::Conflict(_) => AppError::conflict(err.to_string()),
             // Internal invariants / storage problems.
             GameError::NoActiveGame | GameError::EmptyReplay | GameError::Storage(_) => {
                 AppError::internal(err.to_string())

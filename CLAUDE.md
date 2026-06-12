@@ -60,9 +60,9 @@ This is a **Blood on the Clocktower game management system** with a real-time ov
 
 **Event Sourcing**: All game state mutations are persisted as events to SQLite. A pure `apply(state, event) -> GameState` function rebuilds state from events. This enables game reload, rewind (undo), and forking (branching alternate timelines).
 
-**Game State** (`game_state.rs`): Immutable `GameState`/`PlayerState` structs (owned, cloned on update). Derived methods include `living_player_count()`, `execution_threshold()`, and `get_dead_players_with_vote()`. Also tracks an optional `chopping_block` (player up for execution + optional vote count, set via `POST /game/chopping_block`) that auto-clears in `apply()` when that player dies or is removed, or when night begins. Updated via `GameManager::dispatch()` which atomically applies, persists, and notifies SSE subscribers.
+**Game State** (`game_state.rs`): Immutable `GameState`/`PlayerState` structs (owned, cloned on update). Derived methods include `living_player_count()`, `execution_threshold()`, and `get_dead_players_with_vote()`. Also tracks an optional `chopping_block` (player up for execution + optional vote count, set via `POST /game/chopping_block`) that auto-clears in `apply()` when that player dies or is removed, or when night begins. Updated via `GameManager::dispatch()` (or `dispatch_with()` when the payload depends on current state, e.g. the random role draw), which atomically validates, applies, persists, and notifies SSE subscribers.
 
-**Events** (`events.rs`): `EventPayload` is an internally-tagged serde enum (`#[serde(tag = "type")]`); the `type` tag values and JSON shape match the on-disk event log exactly. The pure `apply(state, event) -> GameState` and `replay()` functions live in `apply.rs`.
+**Events** (`events.rs`): `EventPayload` is an internally-tagged serde enum (`#[serde(tag = "type")]`); the `type` tag values and JSON shape match the on-disk event log exactly. The pure `apply(state, event) -> GameState` and `replay()` functions live in `apply.rs`, alongside `validate(state, payload)` — run by `dispatch()` under its state lock (race-free precondition checks: duplicate names, pool membership, aliveness, etc.). Replay skips validation: persisted events are facts.
 
 **Event Store** (`event_store.rs`): `rusqlite`-backed persistence. Single `events` table with `game_id`, `sequence`, `event_type`, and JSON `payload`. Supports `get_events()`, `delete_after_sequence()` (rewind), and `fork_game()`.
 
@@ -81,7 +81,7 @@ This is a **Blood on the Clocktower game management system** with a real-time ov
 ### Key Data Flow
 
 1. **Game Creation**: Script selected → Game state initialized → Roles manually included via API → Ready for players
-2. **Mutations**: Route handler calls `manager.dispatch(event)` → `apply()` produces new immutable state → Event persisted to SQLite → SSE subscribers notified via broadcast
+2. **Mutations**: Route handler calls `manager.dispatch(event)` (or `dispatch_with(closure)`) → `validate()` checks preconditions under the state lock → `apply()` produces new immutable state → Event persisted to SQLite → SSE subscribers notified via broadcast. Rejected events leave no trace.
 3. **Frontend**: React overlay connects via `EventSource` to `/game/stream` → Receives full state on connect and after every mutation → Renders timer, player list (or chopping block during a vote), vote info, and scene-effect visuals
 
 ### Important Game Setup Workflow
@@ -131,7 +131,7 @@ let (status, body) = get(&app, "/game/state").await;
 
 - **Backend**: `cargo fmt` (rustfmt) and `cargo clippy` clean (CI runs `clippy -D warnings`); proper error enums (`StoreError`, `GameError`) via `thiserror`, mapped to HTTP status by `From<…> for AppError`.
 - **Frontend**: ESLint, TypeScript strict mode, Tailwind v4 + shadcn/ui
-- **Immutability**: Game state is effectively immutable — all mutations go through `dispatch()`, which produces a new state via the pure `apply()` function.
+- **Immutability**: Game state is effectively immutable — all mutations go through `dispatch()`, which validates the event against the locked current state and produces a new state via the pure `apply()` function.
 
 ### API Response Format
 

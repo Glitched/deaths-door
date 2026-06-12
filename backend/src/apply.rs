@@ -1,4 +1,4 @@
-//! Pure functions to apply events to game state.
+//! Pure functions to validate and apply events to game state.
 
 use crate::error::GameError;
 use crate::events::{EventPayload, GameEvent};
@@ -13,6 +13,170 @@ fn remove_first_role(roles: &mut Vec<String>, name: &str) {
     let normalized = normalize(name);
     if let Some(idx) = roles.iter().position(|r| normalize(r) == normalized) {
         roles.remove(idx);
+    }
+}
+
+fn ensure_player_exists(state: &GameState, name: &str) -> Result<(), GameError> {
+    if state.get_player(name).is_none() {
+        return Err(GameError::NotFound(format!("Player not found: {name}")));
+    }
+    Ok(())
+}
+
+fn ensure_player_absent(state: &GameState, name: &str) -> Result<(), GameError> {
+    if state.get_player(name).is_some() {
+        return Err(GameError::Conflict(format!(
+            "Player with name {name} already exists."
+        )));
+    }
+    Ok(())
+}
+
+/// Check `name` against the script's characters, or pass when the script is
+/// unknown (there is nothing to validate against).
+fn ensure_role_in_script(
+    state: &GameState,
+    name: &str,
+    missing: impl FnOnce() -> GameError,
+) -> Result<(), GameError> {
+    match state.get_script() {
+        None => Ok(()),
+        Some(script) if script.get_character(name).is_some() => Ok(()),
+        Some(_) => Err(missing()),
+    }
+}
+
+/// Validate an event payload against the state it would be applied to.
+///
+/// Called by `GameManager::dispatch` while holding the state lock, so these
+/// checks are race-free: they see exactly the state the event will mutate.
+/// Replay intentionally skips validation — persisted events are facts.
+pub fn validate(state: &GameState, payload: &EventPayload) -> Result<(), GameError> {
+    match payload {
+        EventPayload::PlayerAdded {
+            player_name,
+            character_name,
+            ..
+        } => {
+            ensure_player_absent(state, player_name)?;
+            let normalized = normalize(character_name);
+            let in_pool = state
+                .included_role_names
+                .iter()
+                .any(|r| normalize(r) == normalized);
+            if !in_pool {
+                return Err(GameError::InvalidInput(format!(
+                    "Role not in pool: {character_name}"
+                )));
+            }
+            Ok(())
+        }
+
+        EventPayload::TravelerAdded {
+            player_name,
+            traveler_name,
+            ..
+        } => {
+            ensure_player_absent(state, player_name)?;
+            let unclaimed = state
+                .get_unclaimed_travelers()
+                .iter()
+                .any(|t| t.is_named(traveler_name));
+            if !unclaimed {
+                return Err(GameError::NotFound(format!(
+                    "Traveler not found or in game: {traveler_name}"
+                )));
+            }
+            Ok(())
+        }
+
+        EventPayload::PlayerRemoved { player_name }
+        | EventPayload::PlayerAliveSet { player_name, .. }
+        | EventPayload::DeadVoteUsedSet { player_name, .. }
+        | EventPayload::PlayerAlignmentSet { player_name, .. }
+        | EventPayload::StatusEffectRemoved { player_name, .. } => {
+            ensure_player_exists(state, player_name)
+        }
+
+        EventPayload::StatusEffectAdded {
+            player_name,
+            effect,
+        } => {
+            ensure_player_exists(state, player_name)?;
+            if effect.trim().is_empty() {
+                return Err(GameError::InvalidInput(
+                    "Status effect name cannot be empty".to_string(),
+                ));
+            }
+            Ok(())
+        }
+
+        EventPayload::PlayerRenamed { old_name, new_name } => {
+            ensure_player_exists(state, old_name)?;
+            if new_name != old_name {
+                ensure_player_absent(state, new_name)?;
+            }
+            Ok(())
+        }
+
+        EventPayload::CharactersSwapped { name1, name2 } => {
+            ensure_player_exists(state, name1)?;
+            ensure_player_exists(state, name2)
+        }
+
+        EventPayload::ChoppingBlockSet { player_name, .. } => {
+            let player = state
+                .get_player(player_name)
+                .ok_or_else(|| GameError::NotFound(format!("Player not found: {player_name}")))?;
+            if !player.is_alive {
+                return Err(GameError::InvalidInput(format!(
+                    "{player_name} is dead and cannot be executed"
+                )));
+            }
+            Ok(())
+        }
+
+        EventPayload::RoleIncluded { name } => ensure_role_in_script(state, name, || {
+            GameError::InvalidInput(format!("Role not found: {name}"))
+        }),
+
+        EventPayload::RolesIncluded { names } => names.iter().try_for_each(|name| {
+            ensure_role_in_script(state, name, || {
+                GameError::InvalidInput(format!("Role not found: {name}"))
+            })
+        }),
+
+        EventPayload::RoleRemoved { name } => {
+            let normalized = normalize(name);
+            let present = state
+                .included_role_names
+                .iter()
+                .any(|r| normalize(r) == normalized);
+            if !present {
+                return Err(GameError::NotFound(format!("Role not in game: {name}")));
+            }
+            Ok(())
+        }
+
+        EventPayload::DemonBluffsSet { bluffs } => {
+            if bluffs.len() > 3 {
+                return Err(GameError::InvalidInput(format!(
+                    "At most 3 demon bluffs allowed, got {}",
+                    bluffs.len()
+                )));
+            }
+            bluffs.iter().try_for_each(|name| {
+                ensure_role_in_script(state, name, || {
+                    GameError::NotFound(format!("Role '{name}' not found in script"))
+                })
+            })
+        }
+
+        EventPayload::GameCreated { .. }
+        | EventPayload::NightStepSet { .. }
+        | EventPayload::FirstNightSet { .. }
+        | EventPayload::RoleVisibilitySet { .. }
+        | EventPayload::ChoppingBlockCleared => Ok(()),
     }
 }
 

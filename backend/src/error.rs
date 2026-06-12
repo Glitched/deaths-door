@@ -28,6 +28,15 @@ pub enum GameError {
     GameNotFound(Uuid),
     #[error("Cannot replay empty event list")]
     EmptyReplay,
+    /// A referenced entity (player, role, traveler) doesn't exist (HTTP 404).
+    #[error("{0}")]
+    NotFound(String),
+    /// The event would create a duplicate (e.g. player name) (HTTP 409).
+    #[error("{0}")]
+    Conflict(String),
+    /// The event is invalid against the current state (HTTP 400).
+    #[error("{0}")]
+    InvalidInput(String),
     #[error(transparent)]
     Storage(#[from] StoreError),
 }

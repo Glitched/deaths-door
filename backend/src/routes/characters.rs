@@ -7,7 +7,7 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::app::{AppError, AppJson, AppResult, AppState};
+use crate::app::{AppJson, AppResult, AppState};
 use crate::character::CharacterOut;
 use crate::events::EventPayload;
 
@@ -71,16 +71,9 @@ async fn add_role(
     State(state): State<AppState>,
     AppJson(req): AppJson<AddRoleRequest>,
 ) -> AppResult<Json<AddRoleResponse>> {
-    let game = state.manager.get_state().await?;
-    let script = game
-        .get_script()
-        .ok_or_else(|| AppError::internal("No script loaded"))?;
-    if script.get_character(&req.name).is_none() {
-        return Err(AppError::bad_request(format!(
-            "Role not found: {}",
-            req.name
-        )));
-    }
+    // Ensure a game exists; the name is validated against the script inside
+    // dispatch.
+    state.manager.get_state().await?;
 
     let new_state = state
         .manager
@@ -117,16 +110,9 @@ async fn add_role_multi(
     State(state): State<AppState>,
     AppJson(req): AppJson<AddRoleMultiRequest>,
 ) -> AppResult<Json<AddRoleMultiResponse>> {
-    let game = state.manager.get_state().await?;
-    let script = game
-        .get_script()
-        .ok_or_else(|| AppError::internal("No script loaded"))?;
-
-    for name in &req.names {
-        if script.get_character(name).is_none() {
-            return Err(AppError::bad_request(format!("Role not found: {name}")));
-        }
-    }
+    // Ensure a game exists; every name is validated against the script inside
+    // dispatch, so an unknown role rejects the whole batch.
+    state.manager.get_state().await?;
 
     let added_count = req.names.len();
     state
@@ -159,19 +145,8 @@ async fn remove_role(
     State(state): State<AppState>,
     AppJson(req): AppJson<RemoveRoleRequest>,
 ) -> AppResult<Json<AddRoleResponse>> {
-    let game = state.manager.get_state().await?;
-    let normalized = req.name.to_lowercase();
-    let normalized = normalized.trim();
-    let present = game
-        .included_role_names
-        .iter()
-        .any(|r| r.to_lowercase().trim() == normalized);
-    if !present {
-        return Err(AppError::not_found(format!(
-            "Role not in game: {}",
-            req.name
-        )));
-    }
+    // Ensure a game exists; pool membership is validated inside dispatch.
+    state.manager.get_state().await?;
 
     let new_state = state
         .manager

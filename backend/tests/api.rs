@@ -408,6 +408,42 @@ async fn rename_swap_alignment_remove() {
 }
 
 #[tokio::test]
+async fn rename_to_existing_name_is_conflict() {
+    let app = test_app();
+    new_game(&app).await;
+    add_player_with_role(&app, "Alice", "Imp").await;
+    add_player_with_role(&app, "Bob", "Chef").await;
+
+    let (status, body) = post(
+        &app,
+        "/players/rename",
+        json!({ "name": "Bob", "new_name": "Alice" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body["detail"].as_str().unwrap().contains("Alice"));
+}
+
+#[tokio::test]
+async fn blank_status_effect_is_rejected() {
+    let app = test_app();
+    new_game(&app).await;
+    add_player_with_role(&app, "Alice", "Imp").await;
+
+    let (status, _) = post(
+        &app,
+        "/players/add_status_effect",
+        json!({ "name": "Alice", "status_effect": "   " }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (_, players) = get(&app, "/players/list").await;
+    let alice = &players.as_array().unwrap()[0];
+    assert_eq!(alice["status_effects"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
 async fn game_state_shape() {
     let app = test_app();
     new_game(&app).await;
