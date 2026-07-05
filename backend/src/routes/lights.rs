@@ -13,6 +13,7 @@ use utoipa_axum::routes;
 use crate::app::{AppError, AppJson, AppResult, AppState};
 use crate::effects::{paired_sound, ActiveEffect};
 use crate::lighting::LightingScene;
+use crate::sound::SoundName;
 
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -83,6 +84,10 @@ pub struct SceneQuery {
     /// Skip the scene's paired sound effect (lights and overlay only).
     #[serde(default)]
     pub silent: bool,
+    /// Replace the scene's paired sound with another (any name from
+    /// `/sounds/list`, e.g. `wilhelm` for a Wilhelm-scream death). The effect
+    /// length follows the chosen sound's audio.
+    pub sound: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -99,17 +104,19 @@ pub struct SceneTriggerResponse {
 ///
 /// The effect's length follows its sound's audio duration (e.g. the death sting
 /// is ~1.5s; the goodnight music box is ~13s). Pass `?silent=true` to skip the
-/// sound. Scene/sound pairs: death→death, drama→drama, goodnight→music_box,
-/// morning→rooster, reveal→drumroll.
+/// sound, or `?sound=<name>` to swap in a different one (the effect length then
+/// follows that sound). Default scene/sound pairs: death→death, drama→drama,
+/// goodnight→music_box, morning→rooster, reveal→drumroll.
 #[utoipa::path(
     post, path = "/lights/scene/{name}", tag = "Lighting",
     params(
         ("name" = String, Path, description = "Scene name, e.g. death/drama/blackout"),
-        ("silent" = Option<bool>, Query, description = "Skip the paired sound effect")
+        ("silent" = Option<bool>, Query, description = "Skip the sound effect"),
+        ("sound" = Option<String>, Query, description = "Replace the scene's paired sound (any name from /sounds/list)")
     ),
     responses(
         (status = 200, description = "Scene triggered", body = SceneTriggerResponse),
-        (status = 404, description = "Scene not found")
+        (status = 404, description = "Scene or sound not found")
     )
 )]
 async fn trigger_scene(
@@ -119,12 +126,22 @@ async fn trigger_scene(
 ) -> AppResult<Json<SceneTriggerResponse>> {
     let scene = LightingScene::from_str(&name)
         .ok_or_else(|| AppError::not_found(format!("Scene '{name}' not found")))?;
+    let sound_override = match &query.sound {
+        Some(name) => Some(
+            SoundName::from_str(name)
+                .ok_or_else(|| AppError::not_found(format!("Sound '{name}' not found")))?,
+        ),
+        None => None,
+    };
+    let effect = state
+        .effects
+        .trigger_with_sound(scene, sound_override, query.silent)
+        .await;
     let sound = if query.silent {
         None
     } else {
-        paired_sound(scene)
+        sound_override.or_else(|| paired_sound(scene))
     };
-    let effect = state.effects.trigger(scene, query.silent).await;
     Ok(Json(SceneTriggerResponse {
         status: "success".to_string(),
         effect,
@@ -146,7 +163,15 @@ async fn trigger_integrated_scene(
     state: State<AppState>,
     name: Path<String>,
 ) -> AppResult<Json<SceneTriggerResponse>> {
-    trigger_scene(state, name, Query(SceneQuery { silent: false })).await
+    trigger_scene(
+        state,
+        name,
+        Query(SceneQuery {
+            silent: false,
+            sound: None,
+        }),
+    )
+    .await
 }
 
 #[derive(Deserialize, ToSchema)]

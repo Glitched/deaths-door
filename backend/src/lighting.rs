@@ -390,6 +390,15 @@ impl LightingManager {
         }
     }
 
+    /// Set only the dimmer on both moving heads, leaving color/strobe alone.
+    /// Used by scene fades, which ramp this at ~30 steps/second.
+    pub fn set_head_dimmers(&self, dimmer: i64) {
+        let mut universe = self.universe.lock_recover();
+        for start in [LIGHT1_START, LIGHT2_START] {
+            Self::write_channel(&mut universe, start + OFF_DIMMER, dimmer);
+        }
+    }
+
     /// Set color/dimmer/strobe on both moving heads at once. Heads can differ
     /// in color for asymmetric looks (e.g. the drama scene).
     pub fn set_heads(&self, colors: (i64, i64), dimmer: i64, strobe: i64) {

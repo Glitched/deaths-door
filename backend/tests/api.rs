@@ -613,6 +613,36 @@ async fn scene_effect_lifecycle() {
 }
 
 #[tokio::test]
+async fn scene_sound_override_sets_effect_length() {
+    let app = test_app();
+    new_game(&app).await;
+
+    // The Wilhelm scream (~2.6s) replaces the death sting (~1.5s), and the
+    // effect length follows it. Silent so test runs stay quiet.
+    let body = post_ok(
+        &app,
+        "/lights/scene/death?silent=true&sound=wilhelm",
+        json!({}),
+    )
+    .await;
+    assert_eq!(body["effect"]["scene"], "death");
+    let duration = body["effect"]["duration_ms"].as_u64().unwrap();
+    assert!(
+        (2000..3500).contains(&duration),
+        "expected a wilhelm-length effect, got {duration}ms"
+    );
+
+    // Unknown sound -> 404.
+    let (status, _) = post(
+        &app,
+        "/lights/scene/death?silent=true&sound=nope",
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn sse_stream_emits_initial_state() {
     use axum::body::Body;
     use axum::http::Request;
