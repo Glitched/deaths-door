@@ -613,6 +613,106 @@ async fn scene_effect_lifecycle() {
 }
 
 #[tokio::test]
+async fn auto_effects_toggle_individually_and_fire_on_game_events() {
+    // Auto-triggers play real sounds; mute the server so test runs stay quiet.
+    std::env::set_var("DEATHS_DOOR_MUTE", "1");
+
+    let app = test_app();
+    game_with_players(&app, &[("Alice", "Imp"), ("Bob", "Chef")]).await;
+
+    // Everything defaults off...
+    let body = get_ok(&app, "/lights/auto_effects").await;
+    assert_eq!(
+        body,
+        json!({ "death": false, "nomination": false, "goodnight": false, "morning": false })
+    );
+
+    // ...so a death fires nothing.
+    post_ok(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Bob", "is_alive": false }),
+    )
+    .await;
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["active_effect"], json!(null));
+
+    // Toggles are individual; omitted fields keep their value.
+    let body = post_ok(&app, "/lights/auto_effects", json!({ "death": true })).await;
+    assert_eq!(body["death"], true);
+    assert_eq!(body["nomination"], false);
+    let body = post_ok(
+        &app,
+        "/lights/auto_effects",
+        json!({ "nomination": true, "morning": true, "goodnight": true }),
+    )
+    .await;
+    assert_eq!(body["death"], true);
+
+    // Reviving fires nothing; dying fires the death scene.
+    post_ok(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Bob", "is_alive": true }),
+    )
+    .await;
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["active_effect"], json!(null));
+    post_ok(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Bob", "is_alive": false }),
+    )
+    .await;
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["active_effect"]["scene"], "death");
+
+    // A nomination fires drama.
+    post_ok(
+        &app,
+        "/game/chopping_block",
+        json!({ "player_name": "Alice" }),
+    )
+    .await;
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["active_effect"]["scene"], "drama");
+
+    // Games start at Dusk (night): stepping to Dawn crosses into day.
+    post_ok(&app, "/game/night/phase/step", json!({ "step": "Dawn" })).await;
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["active_effect"]["scene"], "morning");
+
+    // Dawn -> a night step crosses back into night.
+    post_ok(
+        &app,
+        "/game/night/phase/step",
+        json!({ "step": "Poisoner" }),
+    )
+    .await;
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["active_effect"]["scene"], "goodnight");
+    let goodnight_id = state["active_effect"]["id"].as_u64().unwrap();
+
+    // Moving between two night steps re-fires nothing (same effect id).
+    post_ok(&app, "/game/night/phase/step", json!({ "step": "Imp" })).await;
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["active_effect"]["id"].as_u64().unwrap(), goodnight_id);
+
+    // The first-night toggle resets the bookmark to Dusk; from day that's a
+    // night crossing too.
+    post_ok(&app, "/game/night/phase/step", json!({ "step": "Dawn" })).await;
+    post_ok(
+        &app,
+        "/game/night/phase/first_night",
+        json!({ "is_first_night": false }),
+    )
+    .await;
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["active_effect"]["scene"], "goodnight");
+    assert!(state["active_effect"]["id"].as_u64().unwrap() > goodnight_id);
+}
+
+#[tokio::test]
 async fn scene_sound_override_sets_effect_length() {
     let app = test_app();
     new_game(&app).await;

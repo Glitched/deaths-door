@@ -58,6 +58,9 @@ pub mod colors {
     pub const DRAMA_A: i64 = 30;
     pub const DRAMA_B: i64 = 40;
     pub const BLUE: i64 = 60;
+    /// Unverified guess (one slot past blue on most wheels) — used by the
+    /// sad-trumpet scene; tweak here if the fixture disagrees.
+    pub const PURPLE: i64 = 70;
     pub const AUTO_CYCLE: i64 = 140;
 }
 
@@ -68,6 +71,9 @@ pub enum LightingScene {
     Goodnight,
     Morning,
     Reveal,
+    Alarm,
+    SadTrumpet,
+    Wilhelm,
     Blackout,
     Spotlight,
     Fog,
@@ -81,18 +87,24 @@ impl LightingScene {
             LightingScene::Goodnight => "goodnight",
             LightingScene::Morning => "morning",
             LightingScene::Reveal => "reveal",
+            LightingScene::Alarm => "alarm",
+            LightingScene::SadTrumpet => "sad_trumpet",
+            LightingScene::Wilhelm => "wilhelm",
             LightingScene::Blackout => "blackout",
             LightingScene::Spotlight => "spotlight",
             LightingScene::Fog => "fog",
         }
     }
 
-    pub const ALL: [LightingScene; 8] = [
+    pub const ALL: [LightingScene; 11] = [
         LightingScene::Death,
         LightingScene::Drama,
         LightingScene::Goodnight,
         LightingScene::Morning,
         LightingScene::Reveal,
+        LightingScene::Alarm,
+        LightingScene::SadTrumpet,
+        LightingScene::Wilhelm,
         LightingScene::Blackout,
         LightingScene::Spotlight,
         LightingScene::Fog,

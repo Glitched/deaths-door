@@ -11,7 +11,7 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::app::{AppError, AppJson, AppResult, AppState};
-use crate::effects::{paired_sound, ActiveEffect};
+use crate::effects::{paired_sound, ActiveEffect, AutoEffects};
 use crate::lighting::LightingScene;
 use crate::sound::SoundName;
 
@@ -21,6 +21,8 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(list_scenes))
         .routes(routes!(trigger_scene))
         .routes(routes!(trigger_integrated_scene))
+        .routes(routes!(get_auto_effects))
+        .routes(routes!(set_auto_effects))
         .routes(routes!(set_channel))
         .routes(routes!(set_position))
         .routes(routes!(blackout))
@@ -172,6 +174,47 @@ async fn trigger_integrated_scene(
         }),
     )
     .await
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct AutoEffectsUpdate {
+    /// Fire the death scene when a living player is marked dead.
+    pub death: Option<bool>,
+    /// Fire the drama scene when a player is put on the chopping block.
+    pub nomination: Option<bool>,
+    /// Fire the goodnight scene when the game moves from day into night.
+    pub goodnight: Option<bool>,
+    /// Fire the morning scene when the game moves from night into day.
+    pub morning: Option<bool>,
+}
+
+/// Which game events automatically fire their scene effect.
+#[utoipa::path(
+    get, path = "/lights/auto_effects", tag = "Lighting",
+    responses((status = 200, description = "Current auto-effect toggles", body = AutoEffects))
+)]
+async fn get_auto_effects(State(state): State<AppState>) -> Json<AutoEffects> {
+    Json(state.effects.auto_effects())
+}
+
+/// Toggle auto-effects individually. Omitted fields are left unchanged; all
+/// toggles default to off and reset to off on server restart.
+#[utoipa::path(
+    post, path = "/lights/auto_effects", tag = "Lighting",
+    request_body = AutoEffectsUpdate,
+    responses((status = 200, description = "Resulting auto-effect toggles", body = AutoEffects))
+)]
+async fn set_auto_effects(
+    State(state): State<AppState>,
+    AppJson(req): AppJson<AutoEffectsUpdate>,
+) -> Json<AutoEffects> {
+    let updated = state.effects.update_auto_effects(|auto| {
+        auto.death = req.death.unwrap_or(auto.death);
+        auto.nomination = req.nomination.unwrap_or(auto.nomination);
+        auto.goodnight = req.goodnight.unwrap_or(auto.goodnight);
+        auto.morning = req.morning.unwrap_or(auto.morning);
+    });
+    Json(updated)
 }
 
 #[derive(Deserialize, ToSchema)]

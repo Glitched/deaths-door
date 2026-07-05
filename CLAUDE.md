@@ -31,7 +31,7 @@ cargo fmt --check
 cargo clippy --all-targets
 ```
 
-Useful env vars: `PORT` (default 8000), `DATABASE_PATH` (default `games.db`), `SAMPLE_GAME=true`, `LIGHTING_POSITIONS_PATH` (default `assets/lighting_positions.json`), `RUST_LOG` (e.g. `info`, `debug`).
+Useful env vars: `PORT` (default 8000), `DATABASE_PATH` (default `games.db`), `SAMPLE_GAME=true`, `LIGHTING_POSITIONS_PATH` (default `assets/lighting_positions.json`), `DEATHS_DOOR_MUTE=1` (skip all audio playback; lights/overlay unaffected), `RUST_LOG` (e.g. `info`, `debug`).
 
 ### Frontend (Vite + React)
 ```bash
@@ -74,7 +74,7 @@ This is a **Blood on the Clocktower game management system** with a real-time ov
 
 **DMX Lighting** (`lighting.rs`): Optional serial connection (`serialport`) to OpenDMX/FTDI USB interfaces for moving head lights and a fog machine. Public methods write a shadow copy of the 512-channel DMX universe; a background transmitter thread streams it continuously (~40Hz) with proper BREAK/start-code framing. Player spotlight calibration persists to `LIGHTING_POSITIONS_PATH`. **Sound** (`sound.rs`) uses `rodio`; **APNS** (`apns.rs`) uses `reqwest` + `jsonwebtoken` (ES256). All degrade gracefully when hardware/keys are absent.
 
-**Scene Effects** (`effects.rs`): `POST /lights/scene/{name}` runs a scene as a coordinated effect: a timed DMX cue sequence (`build_cues()`), the scene's paired sound (death→death, drama→drama, goodnight→music_box, morning→rooster, reveal→drumroll; `?silent=true` to skip, `?sound=<name>` to swap in any sound from `/sounds/list`), and an `ActiveEffect {id, scene, duration_ms}` surfaced in `/game/state` and SSE frames so the overlay plays a matching full-screen visual (`EffectOverlay.tsx` + keyframes in `index.css`). Effect length follows the chosen sound's audio duration; dimmer fades are interpolated at ~30 steps/s. A new trigger supersedes any running effect.
+**Scene Effects** (`effects.rs`): `POST /lights/scene/{name}` runs a scene as a coordinated effect: a timed DMX cue sequence (`build_cues()`), the scene's paired sound (death→death, drama→drama, goodnight→music_box, morning→rooster, reveal→drumroll, alarm→alarm, sad_trumpet→sad_trumpet, wilhelm→wilhelm; `?silent=true` to skip, `?sound=<name>` to swap in any sound from `/sounds/list`), and an `ActiveEffect {id, scene, duration_ms}` surfaced in `/game/state` and SSE frames so the overlay plays a matching full-screen visual (`EffectOverlay.tsx` + keyframes in `index.css`). Effect length follows the chosen sound's audio duration; dimmer fades are interpolated at ~30 steps/s. A new trigger supersedes any running effect. **Auto-effects** (`GET`/`POST /lights/auto_effects`, all default off, in-memory only): individually togglable hooks that fire death on a player dying, drama on a nomination, and goodnight/morning when the night-step bookmark crosses the day/night boundary (day = "Dawn").
 
 **Served pages** (`app.rs`): besides the JSON API, the backend serves the built React app from `static/app` (fallback route — `/overlay` is the projector overlay), a standalone role-reveal screen at `/reveal` (`static/role.html`), and an interactive dev console at `/debug` (`static/debug.html`). The `/debug` console subscribes to the SSE stream and exposes buttons that drive game state (night phase, reveals, etc.) — handy for testing without the iOS app. `/static/*` serves the remaining assets.
 

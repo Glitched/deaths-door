@@ -21,6 +21,15 @@ fn game_scenes_have_paired_sounds_and_utility_scenes_do_not() {
         paired_sound(LightingScene::Reveal),
         Some(SoundName::Drumroll)
     );
+    assert_eq!(paired_sound(LightingScene::Alarm), Some(SoundName::Alarm));
+    assert_eq!(
+        paired_sound(LightingScene::SadTrumpet),
+        Some(SoundName::SadTrumpet)
+    );
+    assert_eq!(
+        paired_sound(LightingScene::Wilhelm),
+        Some(SoundName::Wilhelm)
+    );
 
     // Utility scenes are lights-only.
     assert_eq!(paired_sound(LightingScene::Blackout), None);

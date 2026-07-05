@@ -14,6 +14,7 @@ use crate::alignment::Alignment;
 use crate::app::{AppError, AppJson, AppResult, AppState};
 use crate::events::EventPayload;
 use crate::game_state::{player_state_to_out, GameState, PlayerState};
+use crate::lighting::LightingScene;
 use crate::player::PlayerOut;
 
 const ROLE_REVEAL_TIMEOUT_ATTEMPTS: u32 = 100;
@@ -277,8 +278,9 @@ async fn set_player_alive(
 ) -> AppResult<Json<PlayerOut>> {
     let game = state.manager.get_state().await?;
     let player = get_player_or_404(&game, &req.name)?;
+    let died = player.is_alive && !req.is_alive;
 
-    let cleared_effects = if player.is_alive && !req.is_alive {
+    let cleared_effects = if died {
         compute_death_cleared_effects(&game, &req.name)
     } else {
         Vec::new()
@@ -293,6 +295,9 @@ async fn set_player_alive(
         })
         .await?;
     push_counts(&state, &new_state).await;
+    if died && state.effects.auto_effects().death {
+        state.effects.trigger(LightingScene::Death, false).await;
+    }
     Ok(Json(to_out(&new_state, &req.name)?))
 }
 

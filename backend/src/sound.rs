@@ -88,6 +88,14 @@ pub fn duration(sound: SoundName) -> Option<std::time::Duration> {
     decoder.total_duration()
 }
 
+/// Whether server-wide audio mute is on (checked at each play, so tests and
+/// long-running servers can toggle it via the environment).
+fn muted() -> bool {
+    std::env::var("DEATHS_DOOR_MUTE")
+        .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true"))
+        .unwrap_or(false)
+}
+
 /// Locate the wav file for a sound, checking a few candidate asset locations.
 fn sound_path(sound: SoundName) -> Option<PathBuf> {
     let file = format!("{}.wav", sound.value());
@@ -117,7 +125,15 @@ impl SoundFx {
     /// (e.g. an unsupported WAV variant), or no audio output device — so callers
     /// can surface the failure instead of silently dropping it. Because it waits
     /// for the start signal, call it from a blocking context (`spawn_blocking`).
+    ///
+    /// `DEATHS_DOOR_MUTE=1|true` mutes the whole server: playback is skipped
+    /// (successfully) while scene lighting, overlay visuals, and effect
+    /// durations stay exactly the same. Used by tests, and handy for running
+    /// lights-only setups.
     pub fn play(&self, sound: SoundName) -> Result<(), String> {
+        if muted() {
+            return Ok(());
+        }
         let Some(path) = sound_path(sound) else {
             return Err(format!("sound file not found for '{}'", sound.value()));
         };

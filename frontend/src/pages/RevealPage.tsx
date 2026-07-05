@@ -36,14 +36,17 @@ export function RevealPage() {
   // Fetch role (waits for reveal on server side)
   const fetchRole = useCallback(async (name: string) => {
     setStep("waiting");
-    try {
-      const data = await apiFetch<PlayerOut>(`/players/name/${name}`);
-      setPlayer(data);
-      setStep("revealed");
-    } catch {
-      // Retry — server returns 408 on timeout, keep trying
-      setTimeout(() => fetchRole(name), 500);
-    }
+    const attempt = async (): Promise<void> => {
+      try {
+        const data = await apiFetch<PlayerOut>(`/players/name/${name}`);
+        setPlayer(data);
+        setStep("revealed");
+      } catch {
+        // Retry — server returns 408 on timeout, keep trying
+        setTimeout(attempt, 500);
+      }
+    };
+    await attempt();
   }, []);
 
   return (

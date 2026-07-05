@@ -29,8 +29,27 @@ pub fn paired_sound(scene: LightingScene) -> Option<SoundName> {
         LightingScene::Goodnight => Some(SoundName::MusicBox),
         LightingScene::Morning => Some(SoundName::Rooster),
         LightingScene::Reveal => Some(SoundName::Drumroll),
+        LightingScene::Alarm => Some(SoundName::Alarm),
+        LightingScene::SadTrumpet => Some(SoundName::SadTrumpet),
+        LightingScene::Wilhelm => Some(SoundName::Wilhelm),
         LightingScene::Blackout | LightingScene::Spotlight | LightingScene::Fog => None,
     }
+}
+
+/// Which game events automatically fire their scene (sound + lights +
+/// overlay). Everything defaults to off; toggle individual flags at runtime
+/// via `POST /lights/auto_effects`. Held in memory only — a server restart
+/// resets to all-off.
+#[derive(Debug, Clone, Copy, Default, Serialize, ToSchema)]
+pub struct AutoEffects {
+    /// Fire the death scene when a living player is marked dead.
+    pub death: bool,
+    /// Fire the drama scene when a player is put on the chopping block.
+    pub nomination: bool,
+    /// Fire the goodnight scene when the game moves from day into night.
+    pub goodnight: bool,
+    /// Fire the morning scene when the game moves from night into day.
+    pub morning: bool,
 }
 
 /// A scene effect currently playing, included in `/game/state` and SSE frames.
@@ -142,6 +161,42 @@ fn build_cues(scene: LightingScene, total: Duration) -> Vec<Cue> {
             at(1.0, CueAction::Heads(both(colors::AUTO_CYCLE), 255, 0)),
             at(1.0, CueAction::Fog(0)),
         ],
+        // Alarm: a shocking blast of full-brightness white — hard strobe while
+        // the klaxon rings, then locked at max white.
+        LightingScene::Alarm => vec![
+            at(0.0, CueAction::Heads(both(colors::WHITE), 255, 220)),
+            at(0.6, CueAction::Heads(both(colors::WHITE), 255, 120)),
+            at(1.0, CueAction::Heads(both(colors::WHITE), 255, 0)),
+        ],
+        // Sad trumpet: blue/purple heads swap and sag a step dimmer on each
+        // descending womp (four notes), deflating to a moody glow on the last.
+        LightingScene::SadTrumpet => vec![
+            at(
+                0.0,
+                CueAction::Heads((colors::BLUE, colors::PURPLE), 200, 0),
+            ),
+            at(
+                0.25,
+                CueAction::Heads((colors::PURPLE, colors::BLUE), 160, 0),
+            ),
+            at(
+                0.5,
+                CueAction::Heads((colors::BLUE, colors::PURPLE), 120, 0),
+            ),
+            at(
+                0.75,
+                CueAction::Heads((colors::PURPLE, colors::BLUE), 80, 0),
+            ),
+            fade(0.75, 1.0, 80, 50),
+        ],
+        // Wilhelm: a bright flash at the top of the scream, tumbling down to
+        // black as he falls, then a red strobe thud that settles dim.
+        LightingScene::Wilhelm => vec![
+            at(0.0, CueAction::Heads(both(colors::WHITE), 255, 0)),
+            fade(0.0, 0.85, 255, 0),
+            at(0.85, CueAction::Heads(both(colors::RED), 180, 150)),
+            at(1.0, CueAction::Heads(both(colors::RED), 90, 0)),
+        ],
         // A burst from the fog machine, then off.
         LightingScene::Fog => vec![at(0.0, CueAction::Fog(255)), at(1.0, CueAction::Fog(0))],
         LightingScene::Blackout => vec![at(0.0, CueAction::Blackout)],
@@ -158,6 +213,8 @@ pub struct EffectsEngine {
     active: Mutex<Option<(ActiveEffect, Instant)>>,
     /// Trigger counter; doubles as a cancellation token for running cue tasks.
     generation: AtomicU64,
+    /// Which game events auto-fire scenes (all off by default).
+    auto: Mutex<AutoEffects>,
 }
 
 impl EffectsEngine {
@@ -168,7 +225,20 @@ impl EffectsEngine {
             sound: SoundFx::new(),
             active: Mutex::new(None),
             generation: AtomicU64::new(0),
+            auto: Mutex::new(AutoEffects::default()),
         }
+    }
+
+    /// The current auto-effect toggles.
+    pub fn auto_effects(&self) -> AutoEffects {
+        *self.auto.lock_recover()
+    }
+
+    /// Mutate the auto-effect toggles; returns the resulting config.
+    pub fn update_auto_effects(&self, update: impl FnOnce(&mut AutoEffects)) -> AutoEffects {
+        let mut auto = self.auto.lock_recover();
+        update(&mut auto);
+        *auto
     }
 
     /// The effect currently playing, or `None` once its duration has elapsed.
