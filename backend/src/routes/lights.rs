@@ -158,7 +158,7 @@ pub struct ChannelSetRequest {
     post, path = "/lights/fixture/{fixture_id}/channel/{channel}", tag = "Lighting",
     params(
         ("fixture_id" = i64, Path, description = "1=Light1, 2=Light2, 3=Fog"),
-        ("channel" = i64, Path, description = "DMX channel 1-11")
+        ("channel" = i64, Path, description = "DMX channel: 1-11 for the moving heads, 1 for the fog machine")
     ),
     request_body = ChannelSetRequest,
     responses((status = 200, description = "Channel set", body = OperationResponse))
@@ -209,11 +209,11 @@ async fn set_position(
 
 #[utoipa::path(
     post, path = "/lights/blackout", tag = "Lighting",
-    responses((status = 200, description = "All lights blacked out", body = OperationResponse))
+    responses((status = 200, description = "All lights and fog off", body = OperationResponse))
 )]
 async fn blackout(State(state): State<AppState>) -> AppResult<Json<OperationResponse>> {
     state.lighting.blackout();
-    Ok(ok("All lights blacked out"))
+    Ok(ok("All lights and fog off"))
 }
 
 #[derive(Deserialize, ToSchema)]

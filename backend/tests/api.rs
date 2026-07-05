@@ -937,6 +937,31 @@ async fn role_reveal_long_poll_unblocks_when_visibility_enabled() {
 }
 
 #[tokio::test]
+async fn calibrate_then_spotlight_flow() {
+    // Redirect calibration persistence away from the repo's assets directory.
+    let file = std::env::temp_dir().join(format!("dd_api_positions_{}.json", std::process::id()));
+    std::env::set_var("LIGHTING_POSITIONS_PATH", &file);
+
+    let app = test_app();
+    post_ok(
+        &app,
+        "/lights/calibrate/player/7/save",
+        json!({ "pan": 120, "tilt": 80 }),
+    )
+    .await;
+
+    let body = get_ok(&app, "/lights/calibrate/positions").await;
+    assert_eq!(body["positions"]["7"]["pan"], 120);
+    assert_eq!(body["positions"]["7"]["tilt"], 80);
+
+    // With a saved position, spotlighting succeeds instead of 404ing.
+    post_ok(&app, "/lights/spotlight/player/7", json!({})).await;
+
+    std::env::remove_var("LIGHTING_POSITIONS_PATH");
+    let _ = std::fs::remove_file(&file);
+}
+
+#[tokio::test]
 async fn remove_role_is_case_insensitive_and_removes_one_copy() {
     let app = test_app();
     new_game(&app).await;

@@ -166,6 +166,11 @@ impl EffectsEngine {
     pub async fn trigger(self: &Arc<Self>, scene: LightingScene, silent: bool) -> ActiveEffect {
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
 
+        // A superseded scene's fog-off cue never runs, so a mid-scene trigger
+        // could otherwise leave the fog machine going indefinitely. Every new
+        // trigger starts from fog-off; scenes that want fog cue it themselves.
+        self.lighting.set_fog(0);
+
         // The paired sound's audio length sets the effect length (even when
         // silenced, so the effect looks the same); instant scenes have none.
         let paired = paired_sound(scene);
