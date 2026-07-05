@@ -295,8 +295,82 @@ fn player_removed_returns_role_to_pool() {
 }
 
 #[test]
+fn role_removed_is_case_insensitive_and_removes_one_copy() {
+    let state = game_with_roles(&["Imp", "Imp", "Chef"]);
+    let next = apply(
+        &state,
+        &evt(
+            &state,
+            EventPayload::RoleRemoved {
+                name: "  imp ".to_string(),
+            },
+        ),
+    );
+    assert_eq!(next.included_role_names, vec!["Imp", "Chef"]);
+}
+
+#[test]
+fn traveler_added_does_not_consume_the_role_pool() {
+    let state = game_with_roles(&["Imp"]);
+    let next = apply(
+        &state,
+        &evt(
+            &state,
+            EventPayload::TravelerAdded {
+                player_name: "Wanderer".to_string(),
+                traveler_name: "Beggar".to_string(),
+                alignment: "good".to_string(),
+            },
+        ),
+    );
+    assert_eq!(next.players.len(), 1);
+    assert_eq!(next.players[0].character_name, "Beggar");
+    // Travelers are chosen directly, never drawn from the pool.
+    assert_eq!(next.included_role_names, vec!["Imp"]);
+}
+
+/// Replay must never panic on events referencing players that no longer match
+/// (e.g. hand-edited logs); they apply as version-bumping no-ops.
+#[test]
+fn events_for_unknown_players_are_safe_noops() {
+    let state = game_with_roles(&["Imp"]);
+    let state = add_player(&state, "Alice", "Imp", "evil");
+
+    let payloads = [
+        EventPayload::PlayerRemoved {
+            player_name: "Ghost".to_string(),
+        },
+        EventPayload::PlayerRenamed {
+            old_name: "Ghost".to_string(),
+            new_name: "Spectre".to_string(),
+        },
+        EventPayload::CharactersSwapped {
+            name1: "Alice".to_string(),
+            name2: "Ghost".to_string(),
+        },
+        EventPayload::StatusEffectAdded {
+            player_name: "Ghost".to_string(),
+            effect: "Poisoned".to_string(),
+        },
+        EventPayload::DeadVoteUsedSet {
+            player_name: "Ghost".to_string(),
+            has_used_dead_vote: true,
+        },
+    ];
+    for payload in payloads {
+        let next = apply(&state, &evt(&state, payload.clone()));
+        assert_eq!(next.version, state.version + 1, "{payload:?}");
+        assert_eq!(next.players, state.players, "{payload:?}");
+    }
+}
+
+#[test]
 fn living_count_and_execution_threshold() {
     let state = game_with_roles(&["Imp", "Chef", "Empath", "Mayor", "Monk"]);
+    // No players yet: nothing living, nothing needed to execute.
+    assert_eq!(state.living_player_count(), 0);
+    assert_eq!(state.execution_threshold(), 0);
+
     let mut state = state;
     for (n, r) in [
         ("A", "Imp"),
@@ -466,6 +540,123 @@ fn night_steps_filter_by_living_characters() {
 }
 
 #[test]
+fn night_steps_show_when_dead_keeps_step_after_death() {
+    // The Ravenkeeper's other-night step is flagged show_when_dead; the
+    // Poisoner's is not. Kill both and only the Ravenkeeper's step survives.
+    let state = game_with_roles(&["Ravenkeeper", "Poisoner"]);
+    let state = add_player(&state, "Rae", "Ravenkeeper", "good");
+    let state = add_player(&state, "Pat", "Poisoner", "evil");
+    let state = apply(
+        &state,
+        &evt(
+            &state,
+            EventPayload::FirstNightSet {
+                is_first_night: false,
+            },
+        ),
+    );
+
+    let names: Vec<String> = state
+        .get_night_steps()
+        .iter()
+        .map(|s| s.name.clone())
+        .collect();
+    assert!(names.contains(&"Ravenkeeper".to_string()));
+    assert!(names.contains(&"Poisoner".to_string()));
+
+    let mut state = state;
+    for name in ["Rae", "Pat"] {
+        state = apply(
+            &state,
+            &evt(
+                &state,
+                EventPayload::PlayerAliveSet {
+                    player_name: name.to_string(),
+                    is_alive: false,
+                    cleared_effects: vec![],
+                },
+            ),
+        );
+    }
+    let names: Vec<String> = state
+        .get_night_steps()
+        .iter()
+        .map(|s| s.name.clone())
+        .collect();
+    assert!(names.contains(&"Ravenkeeper".to_string()), "{names:?}");
+    assert!(!names.contains(&"Poisoner".to_string()), "{names:?}");
+}
+
+#[test]
+fn unclaimed_travelers_exclude_those_in_play() {
+    let state = game_with_roles(&[]);
+    assert_eq!(state.get_unclaimed_travelers().len(), 5);
+
+    let state = apply(
+        &state,
+        &evt(
+            &state,
+            EventPayload::TravelerAdded {
+                player_name: "Wanderer".to_string(),
+                traveler_name: "Beggar".to_string(),
+                alignment: "good".to_string(),
+            },
+        ),
+    );
+    let unclaimed: Vec<&str> = state
+        .get_unclaimed_travelers()
+        .iter()
+        .map(|t| t.name.as_str())
+        .collect();
+    assert_eq!(unclaimed.len(), 4);
+    assert!(!unclaimed.contains(&"Beggar"));
+}
+
+#[test]
+fn player_out_resolves_travelers_and_falls_back_for_unknown_characters() {
+    use deaths_door::game_state::{player_state_to_out, PlayerState};
+    use deaths_door::scripts::get_script_by_name;
+
+    let script = get_script_by_name("trouble_brewing").unwrap();
+
+    // Travelers resolve through the script's traveler list.
+    let traveler = PlayerState::new(
+        "Wanderer".to_string(),
+        "Beggar".to_string(),
+        "good".to_string(),
+    );
+    let out = player_state_to_out(&traveler, script);
+    assert_eq!(out.character.name, "Beggar");
+    assert!(!out.character.description.is_empty());
+
+    // An unknown character yields a minimal fallback instead of a panic
+    // (this can happen when replaying a log written against other data).
+    let unknown = PlayerState::new(
+        "Alice".to_string(),
+        "Mystery Role".to_string(),
+        "evil".to_string(),
+    );
+    let out = player_state_to_out(&unknown, script);
+    assert_eq!(out.character.name, "Mystery Role");
+    assert_eq!(out.character.icon_path, "mysteryrole.png");
+    assert!(out.character.description.is_empty());
+}
+
+#[test]
+fn derived_getters_are_empty_for_an_unknown_script() {
+    let mut state = GameState::initial(Uuid::new_v4(), "not_a_real_script");
+    state.included_role_names = vec!["Imp".to_string()];
+    state.demon_bluffs = vec!["Mayor".to_string()];
+
+    assert!(state.get_script().is_none());
+    assert!(state.get_night_steps().is_empty());
+    assert!(state.get_included_roles().is_empty());
+    assert!(state.get_demon_bluffs().is_empty());
+    assert!(state.get_status_effects().is_empty());
+    assert!(state.get_unclaimed_travelers().is_empty());
+}
+
+#[test]
 fn replay_reconstructs_state() {
     let game_id = Uuid::new_v4();
     let mut events = Vec::new();
@@ -500,21 +691,122 @@ fn replay_empty_is_error() {
     assert!(replay(&[]).is_err());
 }
 
-#[test]
-fn event_payload_json_uses_type_tag() {
-    let payload = EventPayload::PlayerAdded {
-        player_name: "Alice".to_string(),
-        character_name: "Imp".to_string(),
-        alignment: "evil".to_string(),
-    };
-    let v = serde_json::to_value(&payload).unwrap();
-    assert_eq!(v["type"], "player_added");
-    assert_eq!(v["player_name"], "Alice");
-    assert_eq!(v["character_name"], "Imp");
+/// One instance of every payload variant, for exhaustive serialization checks.
+/// (A new variant won't be picked up automatically — add it here too.)
+fn all_payload_variants() -> Vec<EventPayload> {
+    let s = |v: &str| v.to_string();
+    vec![
+        EventPayload::GameCreated {
+            script_name: s("trouble_brewing"),
+        },
+        EventPayload::NightStepSet { step: s("Dusk") },
+        EventPayload::FirstNightSet {
+            is_first_night: false,
+        },
+        EventPayload::RoleVisibilitySet {
+            should_reveal_roles: true,
+        },
+        EventPayload::RoleIncluded { name: s("Imp") },
+        EventPayload::RolesIncluded {
+            names: vec![s("Imp"), s("Chef")],
+        },
+        EventPayload::RoleRemoved { name: s("Imp") },
+        EventPayload::PlayerAdded {
+            player_name: s("Alice"),
+            character_name: s("Imp"),
+            alignment: s("evil"),
+        },
+        EventPayload::TravelerAdded {
+            player_name: s("Wanderer"),
+            traveler_name: s("Beggar"),
+            alignment: s("good"),
+        },
+        EventPayload::PlayerRemoved {
+            player_name: s("Alice"),
+        },
+        EventPayload::PlayerRenamed {
+            old_name: s("Alice"),
+            new_name: s("Alicia"),
+        },
+        EventPayload::CharactersSwapped {
+            name1: s("Alice"),
+            name2: s("Bob"),
+        },
+        EventPayload::PlayerAliveSet {
+            player_name: s("Alice"),
+            is_alive: false,
+            cleared_effects: vec![(s("Cara"), s("Poisoned"))],
+        },
+        EventPayload::DeadVoteUsedSet {
+            player_name: s("Alice"),
+            has_used_dead_vote: true,
+        },
+        EventPayload::PlayerAlignmentSet {
+            player_name: s("Alice"),
+            alignment: s("good"),
+        },
+        EventPayload::StatusEffectAdded {
+            player_name: s("Alice"),
+            effect: s("Poisoned"),
+        },
+        EventPayload::StatusEffectRemoved {
+            player_name: s("Alice"),
+            effect: s("Poisoned"),
+        },
+        EventPayload::DemonBluffsSet {
+            bluffs: vec![s("Mayor")],
+        },
+        EventPayload::ChoppingBlockSet {
+            player_name: s("Alice"),
+            votes: Some(4),
+        },
+        EventPayload::ChoppingBlockCleared,
+    ]
+}
 
-    // Round-trips back to the same value.
-    let back: EventPayload = serde_json::from_value(v).unwrap();
-    assert_eq!(back, payload);
+/// The serde `type` tag is what's stored on disk, and `event_type()` is what's
+/// written to the store's `event_type` column — they must agree for every
+/// variant, and every variant must round-trip losslessly.
+#[test]
+fn every_event_variant_round_trips_with_matching_type_tag() {
+    for payload in all_payload_variants() {
+        let v = serde_json::to_value(&payload).unwrap();
+        assert_eq!(
+            v["type"],
+            payload.event_type(),
+            "serde tag and event_type() disagree for {payload:?}"
+        );
+        let back: EventPayload = serde_json::from_value(v).unwrap();
+        assert_eq!(back, payload);
+    }
+}
+
+/// Events written before `cleared_effects` / `votes` existed have no such keys
+/// in the on-disk JSON; replaying an old database must still work.
+#[test]
+fn legacy_event_json_without_optional_fields_deserializes() {
+    let alive: EventPayload = serde_json::from_str(
+        r#"{"type": "player_alive_set", "player_name": "Alice", "is_alive": false}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        alive,
+        EventPayload::PlayerAliveSet {
+            player_name: "Alice".to_string(),
+            is_alive: false,
+            cleared_effects: vec![],
+        }
+    );
+
+    let block: EventPayload =
+        serde_json::from_str(r#"{"type": "chopping_block_set", "player_name": "Alice"}"#).unwrap();
+    assert_eq!(
+        block,
+        EventPayload::ChoppingBlockSet {
+            player_name: "Alice".to_string(),
+            votes: None,
+        }
+    );
 }
 
 #[test]
@@ -621,6 +913,62 @@ fn store_fork_copies_events_to_new_game() {
 
     let ids = store.get_all_game_ids().unwrap();
     assert_eq!(ids.len(), 2);
+}
+
+#[test]
+fn store_get_events_up_to_sequence_is_inclusive() {
+    let store = EventStore::in_memory().unwrap();
+    let game_id = Uuid::new_v4();
+    for (i, name) in ["Imp", "Chef", "Mayor"].into_iter().enumerate() {
+        let e = GameEvent::new(
+            game_id,
+            i as i64,
+            EventPayload::RoleIncluded {
+                name: name.to_string(),
+            },
+        );
+        store.append(&e).unwrap();
+    }
+
+    let events = store.get_events(game_id, Some(1)).unwrap();
+    assert_eq!(events.len(), 2);
+    assert_eq!(events.last().unwrap().sequence, 1);
+}
+
+/// The UNIQUE(game_id, sequence) constraint is the store's defense against two
+/// writers corrupting a game's event log; violating it must surface as an Err.
+#[test]
+fn store_rejects_duplicate_sequence_for_same_game() {
+    let store = EventStore::in_memory().unwrap();
+    let game_id = Uuid::new_v4();
+    let payload = EventPayload::GameCreated {
+        script_name: "trouble_brewing".to_string(),
+    };
+    store
+        .append(&GameEvent::new(game_id, 0, payload.clone()))
+        .unwrap();
+    assert!(store.append(&GameEvent::new(game_id, 0, payload)).is_err());
+    assert_eq!(store.get_events(game_id, None).unwrap().len(), 1);
+}
+
+#[test]
+fn store_round_trips_event_ids_and_timestamps() {
+    let store = EventStore::in_memory().unwrap();
+    let game_id = Uuid::new_v4();
+    let event = GameEvent::new(
+        game_id,
+        0,
+        EventPayload::GameCreated {
+            script_name: "trouble_brewing".to_string(),
+        },
+    );
+    store.append(&event).unwrap();
+
+    let loaded = &store.get_events(game_id, None).unwrap()[0];
+    assert_eq!(loaded.id, event.id);
+    assert_eq!(loaded.game_id, event.game_id);
+    // RFC3339 storage keeps sub-second precision, so history timestamps survive.
+    assert_eq!(loaded.timestamp, event.timestamp);
 }
 
 #[test]

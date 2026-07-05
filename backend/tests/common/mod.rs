@@ -51,6 +51,20 @@ pub async fn post(app: &Router, uri: &str, body: Value) -> (StatusCode, Value) {
     request(app, "POST", uri, Some(body)).await
 }
 
+/// GET that must succeed; returns just the body.
+pub async fn get_ok(app: &Router, uri: &str) -> Value {
+    let (status, body) = get(app, uri).await;
+    assert_eq!(status, StatusCode::OK, "GET {uri} failed: {body}");
+    body
+}
+
+/// POST that must succeed; returns just the body.
+pub async fn post_ok(app: &Router, uri: &str, body: Value) -> Value {
+    let (status, resp) = post(app, uri, body).await;
+    assert_eq!(status, StatusCode::OK, "POST {uri} failed: {resp}");
+    resp
+}
+
 /// Create a new Trouble Brewing game.
 pub async fn new_game(app: &Router) {
     let (status, _) = post(
@@ -70,4 +84,33 @@ pub async fn add_player_with_role(app: &Router, player: &str, role: &str) -> Val
     let (s2, body) = post(app, "/players/add", serde_json::json!({ "name": player })).await;
     assert_eq!(s2, StatusCode::OK, "adding player {player}");
     body
+}
+
+/// Add several roles to the game's pool in one atomic call.
+pub async fn add_roles(app: &Router, names: &[&str]) {
+    post_ok(
+        app,
+        "/characters/add/multi",
+        serde_json::json!({ "names": names }),
+    )
+    .await;
+}
+
+/// Create a Trouble Brewing game with the given (player, role) pairs. Each pair
+/// is added one at a time so role assignment is deterministic.
+pub async fn game_with_players(app: &Router, players: &[(&str, &str)]) {
+    new_game(app).await;
+    for (player, role) in players {
+        add_player_with_role(app, player, role).await;
+    }
+}
+
+/// Find a player by name in a `/players/list`-shaped JSON array.
+pub fn find_player<'a>(players: &'a Value, name: &str) -> &'a Value {
+    players
+        .as_array()
+        .expect("player list should be a JSON array")
+        .iter()
+        .find(|p| p["name"] == name)
+        .unwrap_or_else(|| panic!("player {name} not found in {players}"))
 }

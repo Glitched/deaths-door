@@ -3,8 +3,20 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{add_player_with_role, get, new_game, post, test_app};
-use serde_json::json;
+use common::{
+    add_player_with_role, add_roles, find_player, game_with_players, get, get_ok, new_game, post,
+    post_ok, test_app,
+};
+use serde_json::{json, Value};
+
+/// Extract the `name` field from each element of a JSON array.
+fn names_of(v: &Value) -> Vec<&str> {
+    v.as_array()
+        .expect("expected a JSON array")
+        .iter()
+        .map(|e| e["name"].as_str().unwrap())
+        .collect()
+}
 
 #[tokio::test]
 async fn health_ok() {
@@ -202,29 +214,26 @@ async fn scripts_list_contains_trouble_brewing() {
 }
 
 #[tokio::test]
-async fn script_roles_has_22_characters() {
+async fn script_browsing_endpoints() {
     let app = test_app();
-    let (status, body) = get(&app, "/scripts/trouble_brewing/role").await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body.as_array().unwrap().len(), 22);
 
-    let (status, _) = get(&app, "/scripts/unknown/role").await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-}
+    let roles = get_ok(&app, "/scripts/trouble_brewing/role").await;
+    assert_eq!(roles.as_array().unwrap().len(), 22);
 
-#[tokio::test]
-async fn script_role_and_travelers_lookup() {
-    let app = test_app();
-    let (status, body) = get(&app, "/scripts/trouble_brewing/role/Imp").await;
-    assert_eq!(status, StatusCode::OK);
+    let body = get_ok(&app, "/scripts/trouble_brewing/role/Imp").await;
     assert_eq!(body["name"], "Imp");
     assert_eq!(body["category"], "demon");
     assert_eq!(body["alignment"], "evil");
     assert_eq!(body["icon_path"], "imp.png");
 
-    let (status, body) = get(&app, "/scripts/trouble_brewing/travelers").await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body.as_array().unwrap().len(), 5);
+    let travelers = get_ok(&app, "/scripts/trouble_brewing/travelers").await;
+    assert_eq!(travelers.as_array().unwrap().len(), 5);
+
+    // Unknown script or role -> 404.
+    let (status, _) = get(&app, "/scripts/unknown/role").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = get(&app, "/scripts/trouble_brewing/role/NotARole").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -302,32 +311,23 @@ async fn add_traveler_valid_and_invalid() {
 #[tokio::test]
 async fn killing_poisoner_clears_poisoned_effect() {
     let app = test_app();
-    new_game(&app).await;
-    add_player_with_role(&app, "Pat", "Poisoner").await;
-    add_player_with_role(&app, "Cara", "Chef").await;
+    game_with_players(&app, &[("Pat", "Poisoner"), ("Cara", "Chef")]).await;
 
-    post(
+    post_ok(
         &app,
         "/players/add_status_effect",
         json!({ "name": "Cara", "status_effect": "Poisoned" }),
     )
     .await;
-
-    let (status, _) = post(
+    post_ok(
         &app,
         "/players/set_alive",
         json!({ "name": "Pat", "is_alive": false }),
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
 
-    let (_, players) = get(&app, "/players/list").await;
-    let cara = players
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|p| p["name"] == "Cara")
-        .unwrap();
+    let players = get_ok(&app, "/players/list").await;
+    let cara = find_player(&players, "Cara");
     assert_eq!(cara["status_effects"].as_array().unwrap().len(), 0);
 }
 
@@ -453,9 +453,15 @@ async fn history_rewind_fork_load_list() {
     let (status, _) = post(&app, "/game/rewind", json!({ "to_version": 1 })).await;
     assert_eq!(status, StatusCode::OK);
 
-    // Invalid version -> 400.
-    let (status, _) = post(&app, "/game/rewind", json!({ "to_version": 999 })).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    // Out-of-range versions -> 400 for both rewind and fork.
+    for body in [json!({ "to_version": 999 }), json!({ "to_version": 0 })] {
+        let (status, _) = post(&app, "/game/rewind", body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    for body in [json!({ "from_version": 999 }), json!({ "from_version": 0 })] {
+        let (status, _) = post(&app, "/game/fork", body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
 }
 
 #[tokio::test]
@@ -500,9 +506,26 @@ async fn timer_endpoints() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["is_running"], false);
 
+    // Adding seconds adjusts the countdown; a large negative delta clamps at 0.
+    let body = get_ok(&app, "/timer/add/60").await;
+    assert_eq!(body["seconds"], 360);
+    let body = get_ok(&app, "/timer/add/-3600").await;
+    assert_eq!(body["seconds"], 0);
+
+    // Start can set the countdown in the same call.
+    let body = get_ok(&app, "/timer/start?seconds=120").await;
+    assert_eq!(body["is_running"], true);
+    assert_eq!(body["seconds"], 120);
+
     // Out-of-range -> 400.
     let (status, _) = get(&app, "/timer/set/99999").await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = get(&app, "/timer/add/-99999").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Push-token registration is accepted (APNS degrades gracefully sans keys).
+    let body = post_ok(&app, "/timer/push_token", json!({ "push_token": "abc" })).await;
+    assert_eq!(body["status"], "registered");
 }
 
 #[tokio::test]
@@ -523,7 +546,15 @@ async fn sounds_and_lights_basics() {
 
     let (status, body) = get(&app, "/lights/scenes/list").await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["scenes"].as_array().unwrap().len(), 8);
+    let scenes: Vec<&str> = body["scenes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s.as_str().unwrap())
+        .collect();
+    for expected in ["death", "drama", "goodnight", "morning", "blackout"] {
+        assert!(scenes.contains(&expected), "missing scene {expected}");
+    }
 
     let (status, _) = post(&app, "/lights/scene/notascene", json!({})).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
@@ -632,4 +663,291 @@ async fn sse_stream_emits_initial_state() {
     let payload: serde_json::Value = serde_json::from_str(&buf[start..=end]).unwrap();
     assert_eq!(payload["script_name"], "trouble_brewing");
     assert_eq!(payload["players"][0]["character"]["name"], "Imp");
+}
+
+#[tokio::test]
+async fn openapi_spec_is_served() {
+    let app = test_app();
+    let body = get_ok(&app, "/openapi.json").await;
+    assert!(body["openapi"].as_str().unwrap().starts_with("3."));
+    assert!(body["info"]["title"]
+        .as_str()
+        .unwrap()
+        .contains("Death's Door"));
+
+    let paths = body["paths"].as_object().unwrap();
+    for path in [
+        "/game/state",
+        "/game/stream",
+        "/players/add",
+        "/characters/add/multi",
+        "/lights/scene/{name}",
+        "/timer/set/{seconds}",
+    ] {
+        assert!(paths.contains_key(path), "spec is missing {path}");
+    }
+}
+
+#[tokio::test]
+async fn malformed_request_bodies_use_the_error_shape() {
+    use axum::body::Body;
+    use axum::http::Request;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let app = test_app();
+    new_game(&app).await;
+
+    // Wrong field type -> 422 with a {"detail": ...} body.
+    let (status, body) = post(&app, "/players/add", json!({ "name": 42 })).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(body["detail"].is_string(), "expected detail, got {body}");
+
+    // Invalid JSON syntax -> 400 with the same shape.
+    let req = Request::builder()
+        .method("POST")
+        .uri("/players/add")
+        .header("content-type", "application/json")
+        .body(Body::from("{not json"))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(body["detail"].is_string(), "expected detail, got {body}");
+}
+
+#[tokio::test]
+async fn night_step_endpoints_filter_by_phase() {
+    let app = test_app();
+    game_with_players(&app, &[("Pat", "Poisoner")]).await;
+
+    // Info steps only exist on the first night; the Poisoner acts on both.
+    let first = get_ok(&app, "/game/script/night/first").await;
+    let first_names = names_of(&first);
+    assert!(first_names.contains(&"Minion Info"));
+    assert!(first_names.contains(&"Poisoner"));
+
+    let other = get_ok(&app, "/game/script/night/other").await;
+    let other_names = names_of(&other);
+    assert!(!other_names.contains(&"Minion Info"));
+    assert!(other_names.contains(&"Poisoner"));
+
+    // /game/script/night/steps follows the current phase flag.
+    let phase = get_ok(&app, "/game/night/phase").await;
+    assert_eq!(phase["is_first_night"], true);
+    let steps = get_ok(&app, "/game/script/night/steps").await;
+    assert_eq!(names_of(&steps), first_names);
+
+    post_ok(
+        &app,
+        "/game/night/phase/first_night",
+        json!({ "is_first_night": false }),
+    )
+    .await;
+    let steps = get_ok(&app, "/game/script/night/steps").await;
+    assert_eq!(names_of(&steps), other_names);
+}
+
+#[tokio::test]
+async fn script_roles_catalog_is_distinct_from_role_pool() {
+    let app = test_app();
+    new_game(&app).await;
+    add_roles(&app, &["Imp", "Chef"]).await;
+
+    // The catalog lists everything the script defines; the pool only what was added.
+    let catalog = get_ok(&app, "/game/script/roles").await;
+    assert_eq!(catalog.as_array().unwrap().len(), 22);
+    let pool = get_ok(&app, "/characters/list").await;
+    assert_eq!(names_of(&pool), ["Imp", "Chef"]);
+}
+
+#[tokio::test]
+async fn status_effects_catalog_follows_characters_in_play() {
+    let app = test_app();
+    game_with_players(&app, &[("Pat", "Poisoner"), ("Mo", "Monk")]).await;
+
+    let effects = get_ok(&app, "/game/status_effects").await;
+    let pairs: Vec<(&str, &str)> = effects
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["name"].as_str().unwrap(),
+                e["character_name"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    // Sorted by character name: Monk before Poisoner.
+    assert_eq!(pairs, [("Safe", "Monk"), ("Poisoned", "Poisoner")]);
+}
+
+#[tokio::test]
+async fn dead_vote_flow_updates_state() {
+    let app = test_app();
+    game_with_players(&app, &[("Alice", "Imp"), ("Bob", "Chef")]).await;
+
+    let names = get_ok(&app, "/players/names").await;
+    assert_eq!(names, json!(["Alice", "Bob"]));
+
+    // A fresh death grants a dead vote...
+    post_ok(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Bob", "is_alive": false }),
+    )
+    .await;
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["dead_players_with_vote"], json!(["Bob"]));
+
+    // ...which disappears once used.
+    let body = post_ok(
+        &app,
+        "/players/set_has_used_dead_vote",
+        json!({ "name": "Bob", "has_used_dead_vote": true }),
+    )
+    .await;
+    assert_eq!(body["has_used_dead_vote"], true);
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["dead_players_with_vote"], json!([]));
+
+    let (status, _) = post(
+        &app,
+        "/players/set_has_used_dead_vote",
+        json!({ "name": "Ghost", "has_used_dead_vote": true }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn remove_status_effect_is_safe_when_absent() {
+    let app = test_app();
+    game_with_players(&app, &[("Alice", "Imp")]).await;
+
+    // Removing an effect the player doesn't have succeeds without error.
+    let body = post_ok(
+        &app,
+        "/players/remove_status_effect",
+        json!({ "name": "Alice", "status_effect": "Poisoned" }),
+    )
+    .await;
+    assert_eq!(body["status_effects"], json!([]));
+
+    // Add-then-remove round-trips.
+    post_ok(
+        &app,
+        "/players/add_status_effect",
+        json!({ "name": "Alice", "status_effect": "Poisoned" }),
+    )
+    .await;
+    let body = post_ok(
+        &app,
+        "/players/remove_status_effect",
+        json!({ "name": "Alice", "status_effect": "Poisoned" }),
+    )
+    .await;
+    assert_eq!(body["status_effects"], json!([]));
+
+    let (status, _) = post(
+        &app,
+        "/players/remove_status_effect",
+        json!({ "name": "Ghost", "status_effect": "Poisoned" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn traveler_duplicate_name_and_claimed_traveler_are_rejected() {
+    let app = test_app();
+    new_game(&app).await;
+    post_ok(
+        &app,
+        "/players/add_traveler",
+        json!({ "name": "Wanderer", "traveler": "Beggar" }),
+    )
+    .await;
+
+    // Duplicate player name -> 409, even for travelers.
+    let (status, _) = post(
+        &app,
+        "/players/add_traveler",
+        json!({ "name": "Wanderer", "traveler": "Thief" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // A traveler already in play can't be claimed again.
+    let (status, _) = post(
+        &app,
+        "/players/add_traveler",
+        json!({ "name": "Drifter", "traveler": "Beggar" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn load_game_switches_between_saved_games() {
+    let app = test_app();
+    game_with_players(&app, &[("Alice", "Imp")]).await;
+    let hist = get_ok(&app, "/game/history").await;
+    let first_id = hist["game_id"].as_str().unwrap().to_string();
+
+    // A second game becomes active with its own players.
+    game_with_players(&app, &[("Bob", "Chef")]).await;
+    let names = get_ok(&app, "/players/names").await;
+    assert_eq!(names, json!(["Bob"]));
+
+    // Loading the first game restores its state.
+    let body = post_ok(&app, "/game/load", json!({ "game_id": first_id })).await;
+    assert_eq!(body["players"][0]["name"], "Alice");
+
+    // Malformed and unknown ids -> 400.
+    let (status, _) = post(&app, "/game/load", json!({ "game_id": "not-a-uuid" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let unknown = uuid::Uuid::new_v4().to_string();
+    let (status, _) = post(&app, "/game/load", json!({ "game_id": unknown })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn role_reveal_long_poll_unblocks_when_visibility_enabled() {
+    let app = test_app();
+    game_with_players(&app, &[("Alice", "Imp")]).await;
+
+    // Start the long-poll before roles are revealed; it should wait.
+    let poller = {
+        let app = app.clone();
+        tokio::spawn(async move { get(&app, "/players/name/Alice").await })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    post_ok(
+        &app,
+        "/players/set_visibility",
+        json!({ "should_reveal_roles": true }),
+    )
+    .await;
+
+    let (status, body) = poller.await.unwrap();
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["character"]["name"], "Imp");
+}
+
+#[tokio::test]
+async fn remove_role_is_case_insensitive_and_removes_one_copy() {
+    let app = test_app();
+    new_game(&app).await;
+    post_ok(&app, "/characters/add", json!({ "name": "Imp" })).await;
+    post_ok(&app, "/characters/add", json!({ "name": "Imp" })).await;
+
+    let body = post_ok(&app, "/characters/remove", json!({ "name": "imp" })).await;
+    assert_eq!(body["included_roles"], json!(["Imp"]));
+    let body = post_ok(&app, "/characters/remove", json!({ "name": "IMP" })).await;
+    assert_eq!(body["included_roles"], json!([]));
+
+    let (status, _) = post(&app, "/characters/remove", json!({ "name": "Imp" })).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
