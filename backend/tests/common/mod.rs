@@ -51,6 +51,15 @@ pub async fn post(app: &Router, uri: &str, body: Value) -> (StatusCode, Value) {
     request(app, "POST", uri, Some(body)).await
 }
 
+/// GET returning the raw body as text (for non-JSON endpoints like the journal).
+pub async fn get_text(app: &Router, uri: &str) -> (StatusCode, String) {
+    let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let status = resp.status();
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    (status, String::from_utf8_lossy(&bytes).to_string())
+}
+
 /// GET that must succeed; returns just the body.
 pub async fn get_ok(app: &Router, uri: &str) -> Value {
     let (status, body) = get(app, uri).await;

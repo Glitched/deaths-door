@@ -32,6 +32,12 @@ export interface ActiveEffect {
   duration_ms: number;
 }
 
+/** A nomination vote being tallied live (hands going around the circle). */
+export interface VoteInProgress {
+  player_name: string;
+  voters: string[];
+}
+
 export interface GameState {
   script_name: string;
   players: PlayerOut[];
@@ -40,12 +46,18 @@ export interface GameState {
   dead_players_with_vote: string[];
   current_night_step: string;
   is_first_night: boolean;
+  phase?: "day" | "night";
   chopping_block: ChoppingBlock | null;
+  vote_in_progress?: VoteInProgress | null;
+  winner?: string | null;
+  game_over_hint?: string | null;
   active_effect: ActiveEffect | null;
   timer: TimerState;
 }
 
 export function isNightPhase(state: GameState): boolean {
+  // Prefer the first-class phase; fall back to the bookmark for old backends.
+  if (state.phase) return state.phase === "night";
   const step = state.current_night_step;
   return step !== "Dawn" && step !== "";
 }

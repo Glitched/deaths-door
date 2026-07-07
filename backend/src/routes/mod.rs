@@ -1,6 +1,7 @@
 //! HTTP route modules, organized by domain (mirrors the Python `routes/`).
 
 pub mod characters;
+pub mod day;
 pub mod game;
 pub mod lights;
 pub mod players;

@@ -193,6 +193,26 @@
           </div>
         </details>
 
+        <h2>Day cycle</h2>
+        <div class="row">
+          <button id="beginDayBtn">☀️ Begin day</button>
+          <button id="endDayBtn" title="Executes whoever is on the chopping block">🪓 End day</button>
+          <button id="beginNightBtn">🌙 Begin night</button>
+        </div>
+        <div class="row">
+          <button id="announceBtn" title="Announce the next queued overnight death">📣 Announce: —</button>
+        </div>
+        <div class="row">
+          <input id="nomineeName" class="field" placeholder="Nominee" />
+          <button id="startVoteBtn">Start vote</button>
+        </div>
+        <div class="row" id="voteRow" hidden>
+          <span class="small" id="voteLabel">—</span>
+          <button id="voteConfirmBtn" class="primary">Confirm</button>
+          <button id="voteCancelBtn">Cancel</button>
+        </div>
+        <div id="voteVoters" class="row muted" style="font-size:0.75rem" hidden></div>
+
         <h2>Night phase</h2>
         <div class="row">
           <button id="nightToggleBtn" title="Toggle first night ⇄ other nights">Phase: —</button>
@@ -346,12 +366,16 @@
         const total = (state.players || []).length;
         const t = state.timer || {};
         $("stateLine").innerHTML =
-          `<b>${state.script_name || "?"}</b> · ${state.is_first_night ? "first night" : "other night"} ` +
+          `<b>${state.script_name || "?"}</b> · ${state.phase === "day" ? `☀️ day ${state.day_number}` : `🌙 ${state.is_first_night ? "first night" : "night"}`} ` +
           `· step <b>${state.current_night_step || "—"}</b> · <b>${alive}</b>/${total} alive ` +
           `· ${state.execution_threshold ?? "?"} to execute · roles ${state.should_reveal_roles ? "revealed" : "hidden"} ` +
+          (state.vote_in_progress ? `· 🗳 <b>${state.vote_in_progress.player_name}</b>: ${state.vote_in_progress.voters.length} votes ` : "") +
           (state.chopping_block ? `· 🪓 <b>${state.chopping_block.player_name}</b> on the block ` : "") +
+          ((state.deaths_to_announce || []).length ? `· 📣 to announce: <b>${state.deaths_to_announce.join(", ")}</b> ` : "") +
+          (state.winner ? `· 🏆 <b>${state.winner}</b> wins ` : state.game_over_hint ? `· ⚠️ ${state.game_over_hint} ` : "") +
           (state.active_effect ? `· ✨ <b>${state.active_effect.scene}</b> playing ` : "") +
           `· ⏱ ${t.seconds ?? "?"}s ${t.is_running ? "▶" : "⏸"}`;
+        renderDayControls();
 
         // Stateful toggle buttons double as live indicators of current state.
         $("nightToggleBtn").textContent = `Phase: ${state.is_first_night ? "first night" : "other nights"}`;
@@ -487,6 +511,47 @@
         const next = !(state?.is_first_night);
         act(next ? "→ first night" : "→ other nights", () => api("POST", "/game/night/phase/first_night", { is_first_night: next }));
       };
+      // ---------- Day cycle ----------
+      $("beginDayBtn").onclick = () => act("Begin day", () => api("POST", "/game/day/begin"));
+      $("endDayBtn").onclick = () => act("End day", () => api("POST", "/game/day/end"));
+      $("beginNightBtn").onclick = () => act("Begin night", () => api("POST", "/game/night/begin"));
+      $("announceBtn").onclick = () => {
+        const next = (state?.deaths_to_announce || [])[0];
+        if (!next) return toast("No deaths to announce", "err");
+        act(`Announce ${next}`, () => api("POST", "/game/day/announce_death", { player_name: next }));
+      };
+      $("startVoteBtn").onclick = () => {
+        const name = $("nomineeName").value.trim();
+        if (!name) return toast("Enter a nominee", "err");
+        act(`Vote on ${name}`, () => api("POST", "/game/vote/start", { player_name: name }));
+      };
+      $("voteConfirmBtn").onclick = () => act("Confirm vote", () => api("POST", "/game/vote/confirm", {}));
+      $("voteCancelBtn").onclick = () => act("Cancel vote", () => api("POST", "/game/vote/cancel"));
+
+      // The vote widget doubles as the tally: eligible voters render as
+      // toggle chips, and every click posts the full selection.
+      function renderDayControls() {
+        const next = (state?.deaths_to_announce || [])[0];
+        $("announceBtn").textContent = `📣 Announce: ${next || "—"}`;
+        const v = state?.vote_in_progress;
+        $("voteRow").hidden = !v;
+        $("voteVoters").hidden = !v;
+        if (!v) return;
+        $("voteLabel").textContent = `${v.player_name}: ${v.voters.length}`;
+        const box = $("voteVoters");
+        box.replaceChildren();
+        for (const name of state.eligible_voters || []) {
+          const selected = v.voters.includes(name);
+          const b = el("button", { textContent: (selected ? "✓ " : "") + name });
+          if (selected) b.classList.add("primary");
+          b.onclick = () => {
+            const voters = selected ? v.voters.filter((n) => n !== name) : [...v.voters, name];
+            act(`Voters: ${voters.length}`, () => api("POST", "/game/vote/voters", { voters }));
+          };
+          box.append(b);
+        }
+      }
+
       $("duskBtn").onclick = () => act("Step → Dusk", () => api("POST", "/game/night/phase/step", { step: "Dusk" }));
       $("dawnBtn").onclick = () => act("Step → Dawn", () => api("POST", "/game/night/phase/step", { step: "Dawn" }));
       $("prevStepBtn").onclick = () => gotoStep(-1);

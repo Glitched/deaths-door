@@ -338,6 +338,13 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
             next.version += 1;
             next
         }
+
+        EventPayload::GameEnded { winner } => {
+            let mut next = state.clone();
+            next.winner = Some(winner.clone());
+            next.version += 1;
+            next
+        }
     }
 }
 

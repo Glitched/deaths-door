@@ -109,6 +109,10 @@ pub enum EventPayload {
         #[serde(default)]
         cleared_effects: Vec<(String, String)>,
     },
+    /// The storyteller ended the game; `winner` is "good" or "evil".
+    GameEnded {
+        winner: String,
+    },
 }
 
 impl EventPayload {
@@ -140,6 +144,7 @@ impl EventPayload {
             EventPayload::DeathAnnounced { .. } => "death_announced",
             EventPayload::NominationRecorded { .. } => "nomination_recorded",
             EventPayload::PlayerExecuted { .. } => "player_executed",
+            EventPayload::GameEnded { .. } => "game_ended",
         }
     }
 }
@@ -283,5 +288,10 @@ pub fn describe_event(payload: &EventPayload) -> String {
             )
         }
         EventPayload::PlayerExecuted { player_name, .. } => format!("{player_name} was executed"),
+        EventPayload::GameEnded { winner } => match winner.as_str() {
+            "good" => "Good wins!".to_string(),
+            "evil" => "Evil wins!".to_string(),
+            other => format!("Game over — {other} wins"),
+        },
     }
 }

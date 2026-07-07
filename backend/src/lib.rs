@@ -26,6 +26,7 @@ pub mod scripts;
 pub mod sound;
 pub mod status_effect;
 pub mod timer_state;
+pub mod vote;
 
 pub mod app;
 pub mod routes;
