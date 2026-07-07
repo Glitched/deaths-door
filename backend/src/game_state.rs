@@ -113,6 +113,12 @@ pub struct GameState {
     /// Nominations resolved today. Cleared when night begins.
     #[serde(default)]
     pub nominations_today: Vec<Nomination>,
+    /// The vote count at which nominations tied, emptying the chopping block.
+    /// A tie stands for the rest of the day: later nominations must beat this
+    /// count, and matching it merely re-ties. Mutually exclusive with an
+    /// occupied block; cleared on day/night transitions and manual block changes.
+    #[serde(default)]
+    pub tied_votes: Option<u32>,
     /// Which team won ("good"/"evil"), once the storyteller has ended the game
     /// via `POST /game/end`. `None` while the game is running.
     #[serde(default)]
@@ -142,6 +148,7 @@ impl GameState {
             day_number: 0,
             deaths_to_announce: Vec::new(),
             nominations_today: Vec::new(),
+            tied_votes: None,
             winner: None,
             version: 0,
         }
@@ -219,6 +226,22 @@ impl GameState {
     /// nominated at most once per day).
     pub fn was_nominated_today(&self, name: &str) -> bool {
         self.nominations_today.iter().any(|n| n.player_name == name)
+    }
+
+    /// Votes a new nomination needs to put its nominee on the block: the base
+    /// execution threshold, raised to one more than the standing count — the
+    /// current block's votes, or the count earlier nominations tied at.
+    pub fn votes_to_take_block(&self) -> u32 {
+        let threshold = self.execution_threshold() as u32;
+        let standing = self
+            .chopping_block
+            .as_ref()
+            .and_then(|b| b.votes)
+            .or(self.tied_votes);
+        match standing {
+            Some(votes) => threshold.max(votes + 1),
+            None => threshold,
+        }
     }
 
     /// A heads-up that the game may be over. The storyteller confirms with

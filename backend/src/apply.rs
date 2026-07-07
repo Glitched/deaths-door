@@ -38,6 +38,7 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
             } else {
                 next.phase = Phase::Night;
                 next.chopping_block = None;
+                next.tied_votes = None;
             }
             next.version += 1;
             next
@@ -49,6 +50,7 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
             next.current_night_step = "Dusk".to_string();
             next.phase = Phase::Night;
             next.chopping_block = None;
+            next.tied_votes = None;
             next.version += 1;
             next
         }
@@ -257,6 +259,8 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
                 player_name: player_name.clone(),
                 votes: *votes,
             });
+            // Manual override: the storyteller's block replaces any standing tie.
+            next.tied_votes = None;
             next.version += 1;
             next
         }
@@ -264,6 +268,7 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
         EventPayload::ChoppingBlockCleared => {
             let mut next = state.clone();
             next.chopping_block = None;
+            next.tied_votes = None;
             next.version += 1;
             next
         }
@@ -273,6 +278,7 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
             next.phase = Phase::Day;
             next.current_night_step = "Dawn".to_string();
             next.day_number += 1;
+            next.tied_votes = None;
             next.version += 1;
             next
         }
@@ -285,6 +291,7 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
             // after any day is a later night.
             next.is_first_night = next.day_number == 0;
             next.chopping_block = None;
+            next.tied_votes = None;
             next.nominations_today.clear();
             next.version += 1;
             next
@@ -350,26 +357,40 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
 
 /// Apply a confirmed nomination's vote count to the chopping block.
 ///
-/// Meeting the execution threshold AND beating the current block takes the
-/// block; exactly tying the current block's votes empties it (a tie means no
-/// one is executed); anything less changes nothing. A block whose vote count
-/// was never recorded (set manually without votes) is replaced by any
-/// threshold-meeting vote and can't be tied.
+/// The count to beat is the "standing" count: the current block's votes, or —
+/// when an earlier tie emptied the block — the count it tied at, which stands
+/// for the rest of the day. Meeting the execution threshold AND beating the
+/// standing count takes the block; exactly matching it (block holder or
+/// standing tie alike) means nobody is on the block and the tie persists;
+/// anything less changes nothing. A block whose vote count was never recorded
+/// (set manually without votes) is replaced by any threshold-meeting vote and
+/// can't be tied.
 fn resolve_nomination(state: &mut GameState, nominee: &str, votes: u32) -> NominationOutcome {
     let threshold = state.execution_threshold() as u32;
-    let block_votes = state.chopping_block.as_ref().map(|b| b.votes);
-    let beats_block = match block_votes {
-        None | Some(None) => true,
-        Some(Some(current)) => votes > current,
+    let unknown_count_block = state
+        .chopping_block
+        .as_ref()
+        .is_some_and(|b| b.votes.is_none());
+    let standing = state
+        .chopping_block
+        .as_ref()
+        .and_then(|b| b.votes)
+        .or(state.tied_votes);
+    let beats_standing = match standing {
+        _ if unknown_count_block => true,
+        Some(current) => votes > current,
+        None => true,
     };
-    if votes >= threshold && beats_block {
+    if votes >= threshold && beats_standing {
         state.chopping_block = Some(ChoppingBlock {
             player_name: nominee.to_string(),
             votes: Some(votes),
         });
+        state.tied_votes = None;
         NominationOutcome::OnTheBlock
-    } else if matches!(block_votes, Some(Some(current)) if current == votes) {
+    } else if matches!(standing, Some(current) if current == votes) {
         state.chopping_block = None;
+        state.tied_votes = Some(votes);
         NominationOutcome::TieBlockEmptied
     } else {
         NominationOutcome::BlockUnchanged

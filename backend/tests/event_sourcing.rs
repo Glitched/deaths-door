@@ -1027,6 +1027,90 @@ fn nominations_resolve_the_chopping_block() {
 }
 
 #[test]
+fn a_tie_stands_for_the_rest_of_the_day() {
+    // Six players, all alive -> threshold ceil(6/2) = 3.
+    let mut state = game_with_roles(&["Imp", "Chef", "Empath", "Mayor", "Monk", "Slayer"]);
+    for (n, r) in [
+        ("Alice", "Imp"),
+        ("Bob", "Chef"),
+        ("Carol", "Empath"),
+        ("Dave", "Mayor"),
+        ("Erin", "Monk"),
+        ("Frank", "Slayer"),
+    ] {
+        state = add_player(&state, n, r, "good");
+    }
+    let state = apply(&state, &evt(&state, EventPayload::DayBegan));
+    let nominate = |state: &GameState, nominee: &str, votes: u32| {
+        apply(
+            state,
+            &evt(
+                state,
+                EventPayload::NominationRecorded {
+                    player_name: nominee.to_string(),
+                    voters: vec![],
+                    votes,
+                },
+            ),
+        )
+    };
+
+    // Alice on the block with 4; one more vote would take it.
+    let state = nominate(&state, "Alice", 4);
+    assert_eq!(state.votes_to_take_block(), 5);
+
+    // Bob ties at 4: block empties but the count stands — it still takes 5.
+    let state = nominate(&state, "Bob", 4);
+    assert!(state.chopping_block.is_none());
+    assert_eq!(state.tied_votes, Some(4));
+    assert_eq!(state.votes_to_take_block(), 5);
+
+    // Carol also gets 4: merely re-ties, nobody goes on the block.
+    let state = nominate(&state, "Carol", 4);
+    assert_eq!(
+        state.nominations_today.last().unwrap().outcome,
+        NominationOutcome::TieBlockEmptied
+    );
+    assert!(state.chopping_block.is_none());
+    assert_eq!(state.tied_votes, Some(4));
+
+    // Dave meets the base threshold (3) but not the standing 4: nothing.
+    let state = nominate(&state, "Dave", 3);
+    assert_eq!(
+        state.nominations_today.last().unwrap().outcome,
+        NominationOutcome::BlockUnchanged
+    );
+    assert!(state.chopping_block.is_none());
+
+    // Erin beats the standing tie: on the block, tie forgotten.
+    let state = nominate(&state, "Erin", 5);
+    assert_eq!(state.chopping_block.as_ref().unwrap().player_name, "Erin");
+    assert_eq!(state.tied_votes, None);
+    assert_eq!(state.votes_to_take_block(), 6);
+
+    // A standing tie resets at phase boundaries and on manual block changes.
+    let tied = nominate(&state, "Frank", 5); // re-tie at 5
+    assert_eq!(tied.tied_votes, Some(5));
+    let night = apply(&tied, &evt(&tied, EventPayload::NightBegan));
+    assert_eq!(night.tied_votes, None);
+    let day = apply(&tied, &evt(&tied, EventPayload::DayBegan));
+    assert_eq!(day.tied_votes, None);
+    let cleared = apply(&tied, &evt(&tied, EventPayload::ChoppingBlockCleared));
+    assert_eq!(cleared.tied_votes, None);
+    let manual = apply(
+        &tied,
+        &evt(
+            &tied,
+            EventPayload::ChoppingBlockSet {
+                player_name: "Alice".to_string(),
+                votes: Some(2),
+            },
+        ),
+    );
+    assert_eq!(manual.tied_votes, None);
+}
+
+#[test]
 fn nominations_spend_dead_votes_and_beat_uncounted_blocks() {
     let state = game_with_roles(&["Imp", "Chef", "Empath"]);
     let state = add_player(&state, "Alice", "Imp", "evil");

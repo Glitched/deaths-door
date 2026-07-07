@@ -961,6 +961,74 @@ async fn nomination_votes_resolve_the_chopping_block() {
 }
 
 #[tokio::test]
+async fn a_tie_raises_the_number_to_beat() {
+    let app = test_app();
+    game_with_players(
+        &app,
+        &[
+            ("Alice", "Imp"),
+            ("Bob", "Chef"),
+            ("Carol", "Empath"),
+            ("Dave", "Mayor"),
+            ("Erin", "Monk"),
+            ("Frank", "Slayer"),
+        ],
+    )
+    .await;
+    let state = post_ok(&app, "/game/day/begin", json!({})).await;
+    // 6 living -> threshold 3, and nothing standing yet.
+    assert_eq!(state["execution_threshold"], 3);
+    assert_eq!(state["votes_to_take_block"], 3);
+    assert_eq!(state["tied_votes"], json!(null));
+
+    let nominate = |nominee: &'static str, votes: u32| {
+        let app = app.clone();
+        async move {
+            post_ok(
+                &app,
+                "/game/nominations",
+                json!({ "player_name": nominee, "voters": [], "votes": votes }),
+            )
+            .await
+        }
+    };
+
+    // Alice on the block with 4 -> 5 to take it.
+    let body = nominate("Alice", 4).await;
+    assert_eq!(body["outcome"], "on_the_block");
+    assert_eq!(body["votes_to_take_block"], 5);
+
+    // Bob ties at 4: block empties but the count stands for the day.
+    let body = nominate("Bob", 4).await;
+    assert_eq!(body["outcome"], "tie_block_emptied");
+    assert_eq!(body["chopping_block"], json!(null));
+    assert_eq!(body["tied_votes"], 4);
+    assert_eq!(body["votes_to_take_block"], 5);
+
+    // Carol's 4 merely re-ties; Dave's threshold-meeting 3 changes nothing.
+    let body = nominate("Carol", 4).await;
+    assert_eq!(body["outcome"], "tie_block_emptied");
+    assert_eq!(body["chopping_block"], json!(null));
+    let body = nominate("Dave", 3).await;
+    assert_eq!(body["outcome"], "block_unchanged");
+    assert_eq!(body["chopping_block"], json!(null));
+    assert_eq!(body["tied_votes"], 4);
+
+    // Erin's 5 beats the standing tie and takes the block.
+    let body = nominate("Erin", 5).await;
+    assert_eq!(body["outcome"], "on_the_block");
+    assert_eq!(body["chopping_block"]["player_name"], "Erin");
+    assert_eq!(body["tied_votes"], json!(null));
+    assert_eq!(body["votes_to_take_block"], 6);
+
+    // Manually clearing the block also forgets any standing count.
+    nominate("Frank", 5).await; // re-tie at 5
+    let body = post_ok(&app, "/game/chopping_block/clear", json!({})).await;
+    assert_eq!(body["tied_votes"], json!(null));
+    assert_eq!(body["votes_to_take_block"], 3);
+}
+
+#[tokio::test]
 async fn live_vote_tally_lifecycle() {
     let app = test_app();
     game_with_players(
