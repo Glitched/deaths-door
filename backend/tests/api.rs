@@ -421,6 +421,12 @@ async fn game_state_shape() {
     assert_eq!(body["execution_threshold"], 1);
     assert!(body["timer"]["is_running"].is_boolean());
     assert!(body["night_steps"].is_array());
+    // Day/night cycle fields (games open on the first night).
+    assert_eq!(body["phase"], "night");
+    assert_eq!(body["day_number"], 0);
+    assert_eq!(body["deaths_to_announce"], json!([]));
+    assert_eq!(body["nominations_today"], json!([]));
+    assert_eq!(body["eligible_voters"], json!(["Alice"]));
 }
 
 #[tokio::test]
@@ -636,6 +642,12 @@ async fn auto_effects_toggle_individually_and_fire_on_game_events() {
     .await;
     let state = get_ok(&app, "/game/state").await;
     assert_eq!(state["active_effect"], json!(null));
+    post_ok(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Bob", "is_alive": true }),
+    )
+    .await;
 
     // Toggles are individual; omitted fields keep their value.
     let body = post_ok(&app, "/lights/auto_effects", json!({ "death": true })).await;
@@ -649,15 +661,28 @@ async fn auto_effects_toggle_individually_and_fire_on_game_events() {
     .await;
     assert_eq!(body["death"], true);
 
-    // Reviving fires nothing; dying fires the death scene.
+    // Even with the death toggle on, night deaths stay silent (sneaky).
+    post_ok(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Bob", "is_alive": false }),
+    )
+    .await;
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["active_effect"], json!(null));
+
+    // Day breaks -> morning fires.
+    post_ok(&app, "/game/day/begin", json!({})).await;
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["active_effect"]["scene"], "morning");
+
+    // A daytime death fires the death scene (revival never does).
     post_ok(
         &app,
         "/players/set_alive",
         json!({ "name": "Bob", "is_alive": true }),
     )
     .await;
-    let state = get_ok(&app, "/game/state").await;
-    assert_eq!(state["active_effect"], json!(null));
     post_ok(
         &app,
         "/players/set_alive",
@@ -677,18 +702,8 @@ async fn auto_effects_toggle_individually_and_fire_on_game_events() {
     let state = get_ok(&app, "/game/state").await;
     assert_eq!(state["active_effect"]["scene"], "drama");
 
-    // Games start at Dusk (night): stepping to Dawn crosses into day.
-    post_ok(&app, "/game/night/phase/step", json!({ "step": "Dawn" })).await;
-    let state = get_ok(&app, "/game/state").await;
-    assert_eq!(state["active_effect"]["scene"], "morning");
-
-    // Dawn -> a night step crosses back into night.
-    post_ok(
-        &app,
-        "/game/night/phase/step",
-        json!({ "step": "Poisoner" }),
-    )
-    .await;
+    // Night falls -> goodnight.
+    post_ok(&app, "/game/night/begin", json!({})).await;
     let state = get_ok(&app, "/game/state").await;
     assert_eq!(state["active_effect"]["scene"], "goodnight");
     let goodnight_id = state["active_effect"]["id"].as_u64().unwrap();
@@ -698,9 +713,11 @@ async fn auto_effects_toggle_individually_and_fire_on_game_events() {
     let state = get_ok(&app, "/game/state").await;
     assert_eq!(state["active_effect"]["id"].as_u64().unwrap(), goodnight_id);
 
-    // The first-night toggle resets the bookmark to Dusk; from day that's a
-    // night crossing too.
+    // Raw step bookmarks still cross phases: Dawn -> morning, and the
+    // first-night toggle (resets to Dusk) -> goodnight again.
     post_ok(&app, "/game/night/phase/step", json!({ "step": "Dawn" })).await;
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["active_effect"]["scene"], "morning");
     post_ok(
         &app,
         "/game/night/phase/first_night",
@@ -710,6 +727,237 @@ async fn auto_effects_toggle_individually_and_fire_on_game_events() {
     let state = get_ok(&app, "/game/state").await;
     assert_eq!(state["active_effect"]["scene"], "goodnight");
     assert!(state["active_effect"]["id"].as_u64().unwrap() > goodnight_id);
+}
+
+#[tokio::test]
+async fn day_cycle_announces_overnight_deaths() {
+    // Announcements always fire the death scene; keep the test run quiet.
+    std::env::set_var("DEATHS_DOOR_MUTE", "1");
+
+    let app = test_app();
+    game_with_players(&app, &[("Alice", "Imp"), ("Bob", "Chef")]).await;
+
+    // A night kill queues for announcement instead of being public.
+    post_ok(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Bob", "is_alive": false }),
+    )
+    .await;
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["deaths_to_announce"], json!(["Bob"]));
+
+    // Announcing is a daytime action.
+    let (status, _) = post(
+        &app,
+        "/game/day/announce_death",
+        json!({ "player_name": "Bob" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Dawn breaks; the queue carries over. Beginning the day twice is a 400.
+    let state = post_ok(&app, "/game/day/begin", json!({})).await;
+    assert_eq!(state["phase"], "day");
+    assert_eq!(state["day_number"], 1);
+    assert_eq!(state["deaths_to_announce"], json!(["Bob"]));
+    let (status, _) = post(&app, "/game/day/begin", json!({})).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Only queued players can be announced.
+    for wrong in ["Ghost", "Alice"] {
+        let (status, _) = post(
+            &app,
+            "/game/day/announce_death",
+            json!({ "player_name": wrong }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "announcing {wrong}");
+    }
+
+    // Announcing checks Bob off and fires the death scene.
+    let state = post_ok(
+        &app,
+        "/game/day/announce_death",
+        json!({ "player_name": "Bob" }),
+    )
+    .await;
+    assert_eq!(state["deaths_to_announce"], json!([]));
+    assert_eq!(state["active_effect"]["scene"], "death");
+    let (status, _) = post(
+        &app,
+        "/game/day/announce_death",
+        json!({ "player_name": "Bob" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Night falls; a night after a day is not the first night.
+    let state = post_ok(&app, "/game/night/begin", json!({})).await;
+    assert_eq!(state["phase"], "night");
+    assert_eq!(state["is_first_night"], false);
+    let (status, _) = post(&app, "/game/night/begin", json!({})).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn nomination_votes_resolve_the_chopping_block() {
+    let app = test_app();
+    game_with_players(
+        &app,
+        &[
+            ("Alice", "Imp"),
+            ("Bob", "Chef"),
+            ("Carol", "Empath"),
+            ("Dave", "Mayor"),
+            ("Erin", "Monk"),
+            ("Frank", "Slayer"),
+        ],
+    )
+    .await;
+
+    // Nominations are a daytime action.
+    let (status, _) = post(
+        &app,
+        "/game/nominations",
+        json!({ "player_name": "Alice", "voters": ["Bob"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Dave dies overnight (he keeps a dead vote), then day breaks:
+    // 5 living -> threshold 3.
+    post_ok(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Dave", "is_alive": false }),
+    )
+    .await;
+    let state = post_ok(&app, "/game/day/begin", json!({})).await;
+    assert_eq!(state["execution_threshold"], 3);
+    assert_eq!(
+        state["eligible_voters"],
+        json!(["Alice", "Bob", "Carol", "Dave", "Erin", "Frank"])
+    );
+
+    // Below the threshold: nothing changes.
+    let body = post_ok(
+        &app,
+        "/game/nominations",
+        json!({ "player_name": "Alice", "voters": ["Bob", "Carol"] }),
+    )
+    .await;
+    assert_eq!(body["outcome"], "block_unchanged");
+    assert_eq!(body["chopping_block"], json!(null));
+
+    // Meeting it takes the empty block; dead Dave's vote is spent by voting.
+    let body = post_ok(
+        &app,
+        "/game/nominations",
+        json!({ "player_name": "Bob", "voters": ["Alice", "Dave", "Erin"] }),
+    )
+    .await;
+    assert_eq!(body["outcome"], "on_the_block");
+    assert_eq!(body["chopping_block"]["player_name"], "Bob");
+    assert_eq!(body["chopping_block"]["votes"], 3);
+    assert_eq!(
+        body["eligible_voters"],
+        json!(["Alice", "Bob", "Carol", "Erin", "Frank"])
+    );
+
+    // A spent dead vote can't vote again.
+    let (status, body) = post(
+        &app,
+        "/game/nominations",
+        json!({ "player_name": "Carol", "voters": ["Dave"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+    // Tying the block empties it: no one is executed on a tie.
+    let body = post_ok(
+        &app,
+        "/game/nominations",
+        json!({ "player_name": "Carol", "voters": ["Alice", "Erin", "Frank"] }),
+    )
+    .await;
+    assert_eq!(body["outcome"], "tie_block_emptied");
+    assert_eq!(body["chopping_block"], json!(null));
+
+    // Beating retakes the block.
+    let body = post_ok(
+        &app,
+        "/game/nominations",
+        json!({ "player_name": "Erin", "voters": ["Alice", "Bob", "Carol", "Frank"] }),
+    )
+    .await;
+    assert_eq!(body["outcome"], "on_the_block");
+    assert_eq!(body["chopping_block"]["player_name"], "Erin");
+
+    // Validation: repeat nominee, dead nominee, unknowns, duplicate voter.
+    let (status, _) = post(
+        &app,
+        "/game/nominations",
+        json!({ "player_name": "Bob", "voters": ["Alice"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST); // already nominated today
+    let (status, _) = post(
+        &app,
+        "/game/nominations",
+        json!({ "player_name": "Dave", "voters": ["Alice"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST); // dead nominee
+    let (status, _) = post(
+        &app,
+        "/game/nominations",
+        json!({ "player_name": "Ghost", "voters": ["Alice"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = post(
+        &app,
+        "/game/nominations",
+        json!({ "player_name": "Frank", "voters": ["Ghost"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = post(
+        &app,
+        "/game/nominations",
+        json!({ "player_name": "Frank", "voters": ["Alice", "Alice"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // A vote total can outweigh the voter count (e.g. a Bureaucrat's vote).
+    let body = post_ok(
+        &app,
+        "/game/nominations",
+        json!({ "player_name": "Frank", "voters": ["Alice", "Bob"], "votes": 5 }),
+    )
+    .await;
+    assert_eq!(body["outcome"], "on_the_block");
+    assert_eq!(body["chopping_block"]["player_name"], "Frank");
+    assert_eq!(body["chopping_block"]["votes"], 5);
+    assert_eq!(body["nominations_today"].as_array().unwrap().len(), 5);
+
+    // Ending the day executes whoever is on the block — publicly, so nothing
+    // queues for announcement. Ending again is a safe no-op.
+    let body = post_ok(&app, "/game/day/end", json!({})).await;
+    assert_eq!(body["executed"], "Frank");
+    assert_eq!(body["chopping_block"], json!(null));
+    // Only Dave's unannounced night death is queued — the execution isn't.
+    assert_eq!(body["deaths_to_announce"], json!(["Dave"]));
+    let frank = find_player(&get_ok(&app, "/players/list").await, "Frank").clone();
+    assert_eq!(frank["is_alive"], false);
+    let body = post_ok(&app, "/game/day/end", json!({})).await;
+    assert_eq!(body["executed"], json!(null));
+
+    // Night wipes the day's nomination record.
+    let state = post_ok(&app, "/game/night/begin", json!({})).await;
+    assert_eq!(state["nominations_today"], json!([]));
 }
 
 #[tokio::test]

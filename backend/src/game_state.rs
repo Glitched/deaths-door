@@ -11,6 +11,42 @@ use crate::script::Script;
 use crate::scripts::get_script_by_name;
 use crate::status_effect::StatusEffectOut;
 
+/// Day/night phase of the game. Nights are for character abilities (and
+/// secret deaths); days are for announcements, nominations, and executions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Phase {
+    Day,
+    Night,
+}
+
+/// What a resolved nomination did to the chopping block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum NominationOutcome {
+    /// Met the execution threshold and beat the current block: the nominee is
+    /// now on the block.
+    OnTheBlock,
+    /// Exactly tied the votes of the player on the block: nobody is on the
+    /// block now (a tie means no one is executed).
+    TieBlockEmptied,
+    /// Not enough votes to change anything.
+    BlockUnchanged,
+}
+
+/// A nomination resolved today. The list clears when night begins.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct Nomination {
+    /// The nominated player.
+    pub player_name: String,
+    /// Final vote count (usually `voters.len()`, but the storyteller may
+    /// record a different total, e.g. a Bureaucrat's triple vote).
+    pub votes: u32,
+    /// Everyone who voted.
+    pub voters: Vec<String>,
+    pub outcome: NominationOutcome,
+}
+
 /// The player currently up for execution (the "chopping block").
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ChoppingBlock {
@@ -63,7 +99,25 @@ pub struct GameState {
     /// when that player dies or is removed, or when night begins.
     #[serde(default)]
     pub chopping_block: Option<ChoppingBlock>,
+    /// Whether it is currently day or night. Kept in sync with the night-step
+    /// bookmark ("Dawn" = day), and driven by `DayBegan`/`NightBegan` events.
+    #[serde(default = "default_phase")]
+    pub phase: Phase,
+    /// How many days have begun. 0 during setup and the first night.
+    #[serde(default)]
+    pub day_number: u32,
+    /// Players who died during the night and haven't been announced yet.
+    /// Filled by night deaths; drained by `DeathAnnounced` (or revival/removal).
+    #[serde(default)]
+    pub deaths_to_announce: Vec<String>,
+    /// Nominations resolved today. Cleared when night begins.
+    #[serde(default)]
+    pub nominations_today: Vec<Nomination>,
     pub version: i64,
+}
+
+fn default_phase() -> Phase {
+    Phase::Night
 }
 
 impl GameState {
@@ -79,8 +133,17 @@ impl GameState {
             is_first_night: true,
             demon_bluffs: Vec::new(),
             chopping_block: None,
+            // Games open on the first night (setup happens before day 1).
+            phase: Phase::Night,
+            day_number: 0,
+            deaths_to_announce: Vec::new(),
+            nominations_today: Vec::new(),
             version: 0,
         }
+    }
+
+    pub fn is_day(&self) -> bool {
+        self.phase == Phase::Day
     }
 
     // --- Script lookup ---
@@ -135,6 +198,22 @@ impl GameState {
             .filter(|p| !p.is_alive && !p.has_used_dead_vote)
             .map(|p| p.name.clone())
             .collect()
+    }
+
+    /// Everyone currently allowed to vote: living players, plus dead players
+    /// who still hold their one dead vote.
+    pub fn eligible_voters(&self) -> Vec<String> {
+        self.players
+            .iter()
+            .filter(|p| p.is_alive || !p.has_used_dead_vote)
+            .map(|p| p.name.clone())
+            .collect()
+    }
+
+    /// Whether a player has already been nominated today (each player may be
+    /// nominated at most once per day).
+    pub fn was_nominated_today(&self, name: &str) -> bool {
+        self.nominations_today.iter().any(|n| n.player_name == name)
     }
 
     // --- Night steps ---
@@ -238,6 +317,39 @@ impl GameState {
         }
         next
     }
+}
+
+/// Persistent status effects to clear when a character dies (death cleanup).
+fn character_persistent_effects(character_name: &str) -> &'static [&'static str] {
+    match character_name {
+        "Poisoner" => &["Poisoned"],
+        "Monk" => &["Safe"],
+        "Butler" => &["Butler's Master"],
+        _ => &[],
+    }
+}
+
+/// Cascading status-effect removals when a player dies.
+pub fn compute_death_cleared_effects(
+    state: &GameState,
+    player_name: &str,
+) -> Vec<(String, String)> {
+    let Some(player) = state.get_player(player_name) else {
+        return Vec::new();
+    };
+    let effects_to_remove = character_persistent_effects(&player.character_name);
+    if effects_to_remove.is_empty() {
+        return Vec::new();
+    }
+    let mut cleared = Vec::new();
+    for p in &state.players {
+        for effect in effects_to_remove {
+            if p.status_effects.iter().any(|e| e == effect) {
+                cleared.push((p.name.clone(), effect.to_string()));
+            }
+        }
+    }
+    cleared
 }
 
 /// Convert a [`PlayerState`] to the API response model.
