@@ -21,6 +21,7 @@ use crate::events::{describe_event, EventPayload};
 use crate::game_state::{
     game_state_to_included_role_outs, player_state_to_out, ChoppingBlock, GameState,
 };
+use crate::lighting::LightingScene;
 use crate::night_step::NightStep;
 use crate::player::PlayerOut;
 use crate::routes::timer::TimerStateResponse;
@@ -253,6 +254,21 @@ async fn get_game_state(State(state): State<AppState>) -> AppResult<Json<GameSta
 
 // --- Night phase ---
 
+/// Fire the goodnight/morning auto-effects when the night-step bookmark
+/// crosses a day/night boundary. Day is when the bookmark sits on "Dawn"
+/// (mirroring the chopping-block auto-clear rule); moving between two night
+/// steps re-fires nothing.
+async fn maybe_phase_auto_effects(state: &AppState, old_step: &str, new_step: &str) {
+    let auto = state.effects.auto_effects();
+    let was_day = old_step == "Dawn";
+    let is_day = new_step == "Dawn";
+    if was_day && !is_day && auto.goodnight {
+        state.effects.trigger(LightingScene::Goodnight, false).await;
+    } else if !was_day && is_day && auto.morning {
+        state.effects.trigger(LightingScene::Morning, false).await;
+    }
+}
+
 #[derive(Serialize, ToSchema)]
 pub struct NightPhaseResponse {
     pub current_night_step: String,
@@ -286,10 +302,12 @@ async fn set_night_step(
     State(state): State<AppState>,
     AppJson(req): AppJson<SetNightStepRequest>,
 ) -> AppResult<Json<NightPhaseResponse>> {
+    let old_step = state.manager.get_state().await?.current_night_step;
     let new_state = state
         .manager
         .dispatch(EventPayload::NightStepSet { step: req.step })
         .await?;
+    maybe_phase_auto_effects(&state, &old_step, &new_state.current_night_step).await;
     Ok(Json(NightPhaseResponse {
         current_night_step: new_state.current_night_step,
         is_first_night: new_state.is_first_night,
@@ -311,12 +329,15 @@ async fn set_first_night(
     State(state): State<AppState>,
     AppJson(req): AppJson<SetFirstNightRequest>,
 ) -> AppResult<Json<NightPhaseResponse>> {
+    let old_step = state.manager.get_state().await?.current_night_step;
     let new_state = state
         .manager
         .dispatch(EventPayload::FirstNightSet {
             is_first_night: req.is_first_night,
         })
         .await?;
+    // Toggling the flag resets the bookmark to Dusk, which can cross into night.
+    maybe_phase_auto_effects(&state, &old_step, &new_state.current_night_step).await;
     Ok(Json(NightPhaseResponse {
         current_night_step: new_state.current_night_step,
         is_first_night: new_state.is_first_night,
@@ -428,6 +449,9 @@ async fn set_chopping_block(
             votes: req.votes,
         })
         .await?;
+    if state.effects.auto_effects().nomination {
+        state.effects.trigger(LightingScene::Drama, false).await;
+    }
     Ok(Json(build_game_state_response(&state).await?))
 }
 

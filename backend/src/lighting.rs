@@ -1,14 +1,21 @@
 //! DMX lighting control for moving head lights and fog machine.
 //!
-//! Talks to an FTDI-based OpenDMX interface over serial (via `serialport`),
-//! mirroring the Python implementation. Degrades gracefully to a no-op when no
-//! interface is connected. The Python `LightingSequence` timeline system is not
-//! ported because no HTTP route reaches it.
+//! Talks to an FTDI-based OpenDMX interface over serial (via `serialport`).
+//! OpenDMX cables are dumb — there is no DMX chip in them — so the host must
+//! generate the DMX512 protocol itself: each frame is a BREAK (line held low),
+//! a mark-after-break, then a 0x00 start code followed by the 512 channel
+//! values, and frames must repeat continuously (fixtures treat signal loss as
+//! an error and may blank or hold). To do that, public methods here only write
+//! into a shadow copy of the universe; a dedicated transmitter thread owns the
+//! serial port and streams the shadow universe ~40 times per second.
+//!
+//! Degrades gracefully to a no-op when no interface is connected: the shadow
+//! universe is still updated (which keeps this testable), but no thread runs.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Mutex;
-use std::time::Duration;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serialport::{DataBits, Parity, SerialPort, SerialPortType, StopBits};
@@ -17,6 +24,17 @@ use crate::lock::LockExt;
 
 const DMX_BAUD: u32 = 250_000;
 const FTDI_VID: u16 = 0x0403;
+const UNIVERSE_SIZE: usize = 512;
+
+/// Refresh interval for the transmitter thread (~40 frames/second; DMX
+/// receivers expect roughly 20-44 Hz). One 513-byte frame at 250kbaud takes
+/// ~23ms on the wire, so this mostly just paces the loop.
+const FRAME_INTERVAL: Duration = Duration::from_millis(25);
+/// BREAK length. The spec minimum is 88µs; longer is always legal, and OS
+/// sleep granularity means we may well overshoot — that's fine.
+const BREAK_DURATION: Duration = Duration::from_micros(200);
+/// Mark-after-break length (spec minimum 8µs, may be up to 1s).
+const MAB_DURATION: Duration = Duration::from_micros(20);
 
 // XPCLEOYZ 60W moving head channel offsets (11-channel mode).
 const OFF_PAN: usize = 0;
@@ -40,6 +58,9 @@ pub mod colors {
     pub const DRAMA_A: i64 = 30;
     pub const DRAMA_B: i64 = 40;
     pub const BLUE: i64 = 60;
+    /// Unverified guess (one slot past blue on most wheels) — used by the
+    /// sad-trumpet scene; tweak here if the fixture disagrees.
+    pub const PURPLE: i64 = 70;
     pub const AUTO_CYCLE: i64 = 140;
 }
 
@@ -50,6 +71,9 @@ pub enum LightingScene {
     Goodnight,
     Morning,
     Reveal,
+    Alarm,
+    SadTrumpet,
+    Wilhelm,
     Blackout,
     Spotlight,
     Fog,
@@ -63,18 +87,24 @@ impl LightingScene {
             LightingScene::Goodnight => "goodnight",
             LightingScene::Morning => "morning",
             LightingScene::Reveal => "reveal",
+            LightingScene::Alarm => "alarm",
+            LightingScene::SadTrumpet => "sad_trumpet",
+            LightingScene::Wilhelm => "wilhelm",
             LightingScene::Blackout => "blackout",
             LightingScene::Spotlight => "spotlight",
             LightingScene::Fog => "fog",
         }
     }
 
-    pub const ALL: [LightingScene; 8] = [
+    pub const ALL: [LightingScene; 11] = [
         LightingScene::Death,
         LightingScene::Drama,
         LightingScene::Goodnight,
         LightingScene::Morning,
         LightingScene::Reveal,
+        LightingScene::Alarm,
+        LightingScene::SadTrumpet,
+        LightingScene::Wilhelm,
         LightingScene::Blackout,
         LightingScene::Spotlight,
         LightingScene::Fog,
@@ -92,48 +122,6 @@ pub struct PlayerPosition {
     pub player_num: i64,
     pub pan: i64,
     pub tilt: i64,
-}
-
-/// Direct OpenDMX/FTDI serial controller holding a 512-channel DMX universe.
-struct OpenDMXController {
-    dmx_data: [u8; 512],
-    port: Box<dyn SerialPort>,
-    port_name: String,
-}
-
-impl OpenDMXController {
-    fn open() -> Result<Self, String> {
-        let port_name = find_ftdi_port().ok_or("No FTDI/OpenDMX device found")?;
-        let port = serialport::new(&port_name, DMX_BAUD)
-            .data_bits(DataBits::Eight)
-            .parity(Parity::None)
-            .stop_bits(StopBits::Two)
-            .timeout(Duration::from_secs(1))
-            .open()
-            .map_err(|e| format!("Failed to open serial port {port_name}: {e}"))?;
-        tracing::info!("Successfully opened OpenDMX on port {port_name}");
-        Ok(OpenDMXController {
-            dmx_data: [0u8; 512],
-            port,
-            port_name,
-        })
-    }
-
-    /// Set a DMX channel value (1-512), clamped to 0-255.
-    fn set_channel(&mut self, channel: usize, value: i64) {
-        if (1..=512).contains(&channel) {
-            self.dmx_data[channel - 1] = value.clamp(0, 255) as u8;
-        } else {
-            tracing::warn!("Invalid DMX channel: {channel}");
-        }
-    }
-
-    /// Send the current DMX universe to the device.
-    fn render(&mut self) {
-        if let Err(e) = self.port.write_all(&self.dmx_data) {
-            tracing::error!("Failed to send DMX data: {e}");
-        }
-    }
 }
 
 fn find_ftdi_port() -> Option<String> {
@@ -156,10 +144,65 @@ fn find_ftdi_port() -> Option<String> {
     None
 }
 
-struct LightingInner {
-    controller: Option<OpenDMXController>,
+fn open_port() -> Result<(Box<dyn SerialPort>, String), String> {
+    let port_name = find_ftdi_port().ok_or("No FTDI/OpenDMX device found")?;
+    let port = serialport::new(&port_name, DMX_BAUD)
+        .data_bits(DataBits::Eight)
+        .parity(Parity::None)
+        .stop_bits(StopBits::Two)
+        .timeout(Duration::from_secs(1))
+        .open()
+        .map_err(|e| format!("Failed to open serial port {port_name}: {e}"))?;
+    Ok((port, port_name))
+}
+
+/// Send one DMX frame: BREAK, mark-after-break, then the start code and all
+/// 512 channel values. `frame` must be the 513-byte wire frame (frame[0] is
+/// the 0x00 start code).
+fn send_frame(port: &mut dyn SerialPort, frame: &[u8]) -> Result<(), String> {
+    port.set_break().map_err(|e| format!("set break: {e}"))?;
+    std::thread::sleep(BREAK_DURATION);
+    port.clear_break()
+        .map_err(|e| format!("clear break: {e}"))?;
+    std::thread::sleep(MAB_DURATION);
+    port.write_all(frame).map_err(|e| format!("write: {e}"))?;
+    // Drain the OS transmit buffer before returning, so the next frame's
+    // BREAK can't cut this frame short.
+    port.flush().map_err(|e| format!("flush: {e}"))?;
+    Ok(())
+}
+
+/// Transmitter loop: stream the shadow universe to the port at a fixed rate,
+/// forever. Errors are logged once per outage rather than 40x/second.
+fn run_transmitter(mut port: Box<dyn SerialPort>, universe: Arc<Mutex<[u8; UNIVERSE_SIZE]>>) {
+    let mut frame = [0u8; UNIVERSE_SIZE + 1]; // frame[0] stays 0x00 (start code)
+    let mut failing = false;
+    loop {
+        let started = Instant::now();
+        frame[1..].copy_from_slice(&universe.lock_recover()[..]);
+        match send_frame(port.as_mut(), &frame) {
+            Ok(()) => {
+                if failing {
+                    tracing::info!("DMX transmission recovered");
+                    failing = false;
+                }
+            }
+            Err(e) => {
+                if !failing {
+                    tracing::warn!("DMX transmission failing (will keep retrying): {e}");
+                    failing = true;
+                }
+            }
+        }
+        if let Some(remaining) = FRAME_INTERVAL.checked_sub(started.elapsed()) {
+            std::thread::sleep(remaining);
+        }
+    }
+}
+
+struct PositionsInner {
     positions: HashMap<i64, PlayerPosition>,
-    positions_file: PathBuf,
+    file: PathBuf,
 }
 
 /// Status snapshot for the `/lights/status` endpoint.
@@ -173,22 +216,43 @@ pub struct LightingStatus {
 }
 
 pub struct LightingManager {
-    inner: Mutex<LightingInner>,
+    /// Shadow copy of the DMX universe; the transmitter thread streams it.
+    universe: Arc<Mutex<[u8; UNIVERSE_SIZE]>>,
+    /// Name of the serial port a transmitter thread is running on, if any.
+    port_name: Option<String>,
+    inner: Mutex<PositionsInner>,
 }
 
 impl LightingManager {
     pub fn new() -> Self {
-        let positions_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("assets")
-            .join("lighting_positions.json");
+        // DMX is write-only, so calibration lives in a JSON file next to the
+        // server's other data (override with LIGHTING_POSITIONS_PATH).
+        let positions_file = std::env::var("LIGHTING_POSITIONS_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("assets/lighting_positions.json"));
 
-        let controller = match OpenDMXController::open() {
-            Ok(c) => {
-                tracing::info!("Successfully initialized DMX controller and fixtures");
-                Some(c)
+        let universe = Arc::new(Mutex::new([0u8; UNIVERSE_SIZE]));
+        let port_name = match open_port() {
+            Ok((port, name)) => {
+                let shadow = Arc::clone(&universe);
+                let spawned = std::thread::Builder::new()
+                    .name("dmx-transmitter".to_string())
+                    .spawn(move || run_transmitter(port, shadow));
+                match spawned {
+                    Ok(_) => {
+                        tracing::info!("Streaming DMX on {name}");
+                        Some(name)
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to spawn DMX transmitter thread: {e}");
+                        None
+                    }
+                }
             }
             Err(e) => {
-                tracing::warn!("Failed to initialize DMX controller: {e}. Continuing without lighting support.");
+                tracing::warn!(
+                    "Failed to initialize DMX controller: {e}. Continuing without lighting support."
+                );
                 None
             }
         };
@@ -196,28 +260,25 @@ impl LightingManager {
         let positions = load_positions(&positions_file);
 
         LightingManager {
-            inner: Mutex::new(LightingInner {
-                controller,
+            universe,
+            port_name,
+            inner: Mutex::new(PositionsInner {
                 positions,
-                positions_file,
+                file: positions_file,
             }),
         }
     }
 
-    pub fn connected(&self) -> bool {
-        self.inner.lock_recover().controller.is_some()
-    }
-
     pub fn status(&self) -> LightingStatus {
-        let inner = self.inner.lock_recover();
-        let connected = inner.controller.is_some();
+        let connected = self.port_name.is_some();
         LightingStatus {
             connected,
-            serial_port: inner.controller.as_ref().map(|c| c.port_name.clone()),
+            serial_port: self.port_name.clone(),
+            // DMX is one-way; per-fixture presence can't actually be probed.
             has_light1: connected,
             has_light2: connected,
             has_fog: connected,
-            calibrated_positions: inner.positions.len(),
+            calibrated_positions: self.inner.lock_recover().positions.len(),
         }
     }
 
@@ -226,6 +287,12 @@ impl LightingManager {
             .iter()
             .map(|s| s.value().to_string())
             .collect()
+    }
+
+    /// A copy of the current shadow universe (`[0]` is DMX channel 1).
+    /// Used by tests and debugging; the transmitter reads the live buffer.
+    pub fn universe_snapshot(&self) -> [u8; UNIVERSE_SIZE] {
+        *self.universe.lock_recover()
     }
 
     /// Map a fixture id to its DMX start channel and whether it's a moving head.
@@ -238,46 +305,51 @@ impl LightingManager {
         }
     }
 
+    /// Write one channel of the shadow universe (1-512), clamping to 0-255.
+    fn write_channel(universe: &mut [u8; UNIVERSE_SIZE], channel: usize, value: i64) {
+        if (1..=UNIVERSE_SIZE).contains(&channel) {
+            universe[channel - 1] = value.clamp(0, 255) as u8;
+        } else {
+            tracing::warn!("Invalid DMX channel: {channel}");
+        }
+    }
+
     pub fn set_channel(&self, fixture_id: i64, channel: i64, value: i64) {
-        let mut inner = self.inner.lock_recover();
-        let Some(controller) = inner.controller.as_mut() else {
-            return;
-        };
+        let mut universe = self.universe.lock_recover();
         match Self::fixture_start(fixture_id) {
-            // Channels 1-11 map to offsets 0-10; guard the range so the
-            // `channel - 1` offset can't underflow on a bad path param.
+            // Moving heads span channels 1-11; the fog machine has a single
+            // channel. Guard the ranges so `channel - 1` can't underflow on a
+            // bad path param.
             Some((start, true)) if (1..=11).contains(&channel) => {
-                controller.set_channel(start + (channel as usize - 1), value);
-                controller.render();
+                Self::write_channel(&mut universe, start + (channel as usize - 1), value);
             }
-            Some((_, true)) => {
-                tracing::warn!("DMX channel out of range (1-11): {channel}")
+            Some((start, false)) if channel == 1 => {
+                Self::write_channel(&mut universe, start, value);
             }
-            _ => tracing::warn!("Invalid fixture for channel control: {fixture_id}"),
+            Some(_) => {
+                tracing::warn!("DMX channel out of range for fixture {fixture_id}: {channel}")
+            }
+            None => tracing::warn!("Invalid fixture for channel control: {fixture_id}"),
         }
     }
 
     pub fn set_position(&self, fixture_id: i64, pan: i64, tilt: i64, fine: bool) {
-        let mut inner = self.inner.lock_recover();
-        let Some(controller) = inner.controller.as_mut() else {
-            return;
-        };
+        let mut universe = self.universe.lock_recover();
         if let Some((start, true)) = Self::fixture_start(fixture_id) {
-            set_position(controller, start, pan, tilt, fine);
+            set_position(&mut universe, start, pan, tilt, fine);
         } else {
             tracing::warn!("Invalid fixture id for position: {fixture_id}");
         }
     }
 
+    /// Kill all light and fog output (colors/positions are left as-is so a
+    /// scene can fade back in from where it was).
     pub fn blackout(&self) {
-        let mut inner = self.inner.lock_recover();
-        let Some(controller) = inner.controller.as_mut() else {
-            return;
-        };
+        let mut universe = self.universe.lock_recover();
         for start in [LIGHT1_START, LIGHT2_START] {
-            controller.set_channel(start + OFF_DIMMER, 0);
+            Self::write_channel(&mut universe, start + OFF_DIMMER, 0);
         }
-        controller.render();
+        Self::write_channel(&mut universe, FOG_START, 0);
     }
 
     pub fn has_position(&self, player_num: i64) -> bool {
@@ -297,9 +369,7 @@ impl LightingManager {
                 tilt,
             },
         );
-        let file = inner.positions_file.clone();
-        let positions = inner.positions.clone();
-        save_positions(&file, &positions);
+        save_positions(&inner.file, &inner.positions);
     }
 
     pub fn get_all_positions(&self) -> HashMap<i64, PlayerPosition> {
@@ -307,49 +377,52 @@ impl LightingManager {
     }
 
     pub fn spotlight_player(&self, player_num: i64, brightness: i64, fixture_id: i64) {
-        let mut inner = self.inner.lock_recover();
-        let position = match inner.positions.get(&player_num).copied() {
+        let position = match self
+            .inner
+            .lock_recover()
+            .positions
+            .get(&player_num)
+            .copied()
+        {
             Some(p) => p,
             None => {
                 tracing::warn!("No saved position for player {player_num}");
                 return;
             }
         };
-        let Some(controller) = inner.controller.as_mut() else {
-            return;
-        };
+        let mut universe = self.universe.lock_recover();
         if let Some((start, true)) = Self::fixture_start(fixture_id) {
-            set_position(controller, start, position.pan, position.tilt, true);
-            // spotlight: white color, full dimmer, no strobe.
-            controller.set_channel(start + OFF_DIMMER, brightness);
-            controller.set_channel(start + OFF_COLOR, 10);
-            controller.set_channel(start + OFF_STROBE, 0);
-            controller.render();
+            set_position(&mut universe, start, position.pan, position.tilt, true);
+            // Spotlight look: white, requested brightness, no strobe.
+            Self::write_channel(&mut universe, start + OFF_DIMMER, brightness);
+            Self::write_channel(&mut universe, start + OFF_COLOR, colors::WHITE);
+            Self::write_channel(&mut universe, start + OFF_STROBE, 0);
         } else {
             tracing::warn!("Invalid fixture id: {fixture_id}");
+        }
+    }
+
+    /// Set only the dimmer on both moving heads, leaving color/strobe alone.
+    /// Used by scene fades, which ramp this at ~30 steps/second.
+    pub fn set_head_dimmers(&self, dimmer: i64) {
+        let mut universe = self.universe.lock_recover();
+        for start in [LIGHT1_START, LIGHT2_START] {
+            Self::write_channel(&mut universe, start + OFF_DIMMER, dimmer);
         }
     }
 
     /// Set color/dimmer/strobe on both moving heads at once. Heads can differ
     /// in color for asymmetric looks (e.g. the drama scene).
     pub fn set_heads(&self, colors: (i64, i64), dimmer: i64, strobe: i64) {
-        let mut inner = self.inner.lock_recover();
-        let Some(controller) = inner.controller.as_mut() else {
-            return;
-        };
-        apply_light(controller, LIGHT1_START, (colors.0, dimmer, strobe));
-        apply_light(controller, LIGHT2_START, (colors.1, dimmer, strobe));
-        controller.render();
+        let mut universe = self.universe.lock_recover();
+        apply_light(&mut universe, LIGHT1_START, (colors.0, dimmer, strobe));
+        apply_light(&mut universe, LIGHT2_START, (colors.1, dimmer, strobe));
     }
 
     /// Set the fog machine output (0 = off, 255 = full).
     pub fn set_fog(&self, intensity: i64) {
-        let mut inner = self.inner.lock_recover();
-        let Some(controller) = inner.controller.as_mut() else {
-            return;
-        };
-        controller.set_channel(FOG_START, intensity);
-        controller.render();
+        let mut universe = self.universe.lock_recover();
+        Self::write_channel(&mut universe, FOG_START, intensity);
     }
 }
 
@@ -359,27 +432,29 @@ impl Default for LightingManager {
     }
 }
 
-fn set_position(controller: &mut OpenDMXController, start: usize, pan: i64, tilt: i64, fine: bool) {
-    controller.set_channel(start + OFF_PAN, pan);
-    controller.set_channel(start + OFF_TILT, tilt);
+/// Point a moving head. Positions are coarse-only (0-255); when `fine` is set,
+/// the fine channels are zeroed so leftovers from manual channel fiddling
+/// can't offset a recalled calibration.
+fn set_position(universe: &mut [u8; UNIVERSE_SIZE], start: usize, pan: i64, tilt: i64, fine: bool) {
+    LightingManager::write_channel(universe, start + OFF_PAN, pan);
+    LightingManager::write_channel(universe, start + OFF_TILT, tilt);
     if fine {
-        controller.set_channel(start + OFF_PAN_FINE, pan);
-        controller.set_channel(start + OFF_TILT_FINE, tilt);
+        LightingManager::write_channel(universe, start + OFF_PAN_FINE, 0);
+        LightingManager::write_channel(universe, start + OFF_TILT_FINE, 0);
     }
-    controller.render();
 }
 
 fn apply_light(
-    controller: &mut OpenDMXController,
+    universe: &mut [u8; UNIVERSE_SIZE],
     start: usize,
     (color, dimmer, strobe): (i64, i64, i64),
 ) {
-    controller.set_channel(start + OFF_COLOR, color);
-    controller.set_channel(start + OFF_DIMMER, dimmer);
-    controller.set_channel(start + OFF_STROBE, strobe);
+    LightingManager::write_channel(universe, start + OFF_COLOR, color);
+    LightingManager::write_channel(universe, start + OFF_DIMMER, dimmer);
+    LightingManager::write_channel(universe, start + OFF_STROBE, strobe);
 }
 
-fn load_positions(file: &PathBuf) -> HashMap<i64, PlayerPosition> {
+fn load_positions(file: &Path) -> HashMap<i64, PlayerPosition> {
     if !file.exists() {
         return HashMap::new();
     }
@@ -401,7 +476,7 @@ fn load_positions(file: &PathBuf) -> HashMap<i64, PlayerPosition> {
     }
 }
 
-fn save_positions(file: &PathBuf, positions: &HashMap<i64, PlayerPosition>) {
+fn save_positions(file: &Path, positions: &HashMap<i64, PlayerPosition>) {
     if let Some(parent) = file.parent() {
         let _ = std::fs::create_dir_all(parent);
     }

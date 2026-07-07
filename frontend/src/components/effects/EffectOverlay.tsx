@@ -9,6 +9,9 @@ const SCENE_CLASSES: Record<string, string> = {
   goodnight: "effect-goodnight",
   morning: "effect-morning",
   reveal: "effect-reveal",
+  alarm: "effect-alarm",
+  sad_trumpet: "effect-sad-trumpet",
+  wilhelm: "effect-wilhelm",
   fog: "effect-fog",
 };
 

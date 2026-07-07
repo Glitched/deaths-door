@@ -11,8 +11,9 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::app::{AppError, AppJson, AppResult, AppState};
-use crate::effects::{paired_sound, ActiveEffect};
+use crate::effects::{paired_sound, ActiveEffect, AutoEffects};
 use crate::lighting::LightingScene;
+use crate::sound::SoundName;
 
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -20,6 +21,8 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(list_scenes))
         .routes(routes!(trigger_scene))
         .routes(routes!(trigger_integrated_scene))
+        .routes(routes!(get_auto_effects))
+        .routes(routes!(set_auto_effects))
         .routes(routes!(set_channel))
         .routes(routes!(set_position))
         .routes(routes!(blackout))
@@ -83,6 +86,10 @@ pub struct SceneQuery {
     /// Skip the scene's paired sound effect (lights and overlay only).
     #[serde(default)]
     pub silent: bool,
+    /// Replace the scene's paired sound with another (any name from
+    /// `/sounds/list`, e.g. `wilhelm` for a Wilhelm-scream death). The effect
+    /// length follows the chosen sound's audio.
+    pub sound: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -99,17 +106,19 @@ pub struct SceneTriggerResponse {
 ///
 /// The effect's length follows its sound's audio duration (e.g. the death sting
 /// is ~1.5s; the goodnight music box is ~13s). Pass `?silent=true` to skip the
-/// sound. Scene/sound pairs: death→death, drama→drama, goodnight→music_box,
-/// morning→rooster, reveal→drumroll.
+/// sound, or `?sound=<name>` to swap in a different one (the effect length then
+/// follows that sound). Default scene/sound pairs: death→death, drama→drama,
+/// goodnight→music_box, morning→rooster, reveal→drumroll.
 #[utoipa::path(
     post, path = "/lights/scene/{name}", tag = "Lighting",
     params(
         ("name" = String, Path, description = "Scene name, e.g. death/drama/blackout"),
-        ("silent" = Option<bool>, Query, description = "Skip the paired sound effect")
+        ("silent" = Option<bool>, Query, description = "Skip the sound effect"),
+        ("sound" = Option<String>, Query, description = "Replace the scene's paired sound (any name from /sounds/list)")
     ),
     responses(
         (status = 200, description = "Scene triggered", body = SceneTriggerResponse),
-        (status = 404, description = "Scene not found")
+        (status = 404, description = "Scene or sound not found")
     )
 )]
 async fn trigger_scene(
@@ -119,12 +128,22 @@ async fn trigger_scene(
 ) -> AppResult<Json<SceneTriggerResponse>> {
     let scene = LightingScene::from_str(&name)
         .ok_or_else(|| AppError::not_found(format!("Scene '{name}' not found")))?;
+    let sound_override = match &query.sound {
+        Some(name) => Some(
+            SoundName::from_str(name)
+                .ok_or_else(|| AppError::not_found(format!("Sound '{name}' not found")))?,
+        ),
+        None => None,
+    };
+    let effect = state
+        .effects
+        .trigger_with_sound(scene, sound_override, query.silent)
+        .await;
     let sound = if query.silent {
         None
     } else {
-        paired_sound(scene)
+        sound_override.or_else(|| paired_sound(scene))
     };
-    let effect = state.effects.trigger(scene, query.silent).await;
     Ok(Json(SceneTriggerResponse {
         status: "success".to_string(),
         effect,
@@ -146,7 +165,56 @@ async fn trigger_integrated_scene(
     state: State<AppState>,
     name: Path<String>,
 ) -> AppResult<Json<SceneTriggerResponse>> {
-    trigger_scene(state, name, Query(SceneQuery { silent: false })).await
+    trigger_scene(
+        state,
+        name,
+        Query(SceneQuery {
+            silent: false,
+            sound: None,
+        }),
+    )
+    .await
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct AutoEffectsUpdate {
+    /// Fire the death scene when a living player is marked dead.
+    pub death: Option<bool>,
+    /// Fire the drama scene when a player is put on the chopping block.
+    pub nomination: Option<bool>,
+    /// Fire the goodnight scene when the game moves from day into night.
+    pub goodnight: Option<bool>,
+    /// Fire the morning scene when the game moves from night into day.
+    pub morning: Option<bool>,
+}
+
+/// Which game events automatically fire their scene effect.
+#[utoipa::path(
+    get, path = "/lights/auto_effects", tag = "Lighting",
+    responses((status = 200, description = "Current auto-effect toggles", body = AutoEffects))
+)]
+async fn get_auto_effects(State(state): State<AppState>) -> Json<AutoEffects> {
+    Json(state.effects.auto_effects())
+}
+
+/// Toggle auto-effects individually. Omitted fields are left unchanged; all
+/// toggles default to off and reset to off on server restart.
+#[utoipa::path(
+    post, path = "/lights/auto_effects", tag = "Lighting",
+    request_body = AutoEffectsUpdate,
+    responses((status = 200, description = "Resulting auto-effect toggles", body = AutoEffects))
+)]
+async fn set_auto_effects(
+    State(state): State<AppState>,
+    AppJson(req): AppJson<AutoEffectsUpdate>,
+) -> Json<AutoEffects> {
+    let updated = state.effects.update_auto_effects(|auto| {
+        auto.death = req.death.unwrap_or(auto.death);
+        auto.nomination = req.nomination.unwrap_or(auto.nomination);
+        auto.goodnight = req.goodnight.unwrap_or(auto.goodnight);
+        auto.morning = req.morning.unwrap_or(auto.morning);
+    });
+    Json(updated)
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -158,7 +226,7 @@ pub struct ChannelSetRequest {
     post, path = "/lights/fixture/{fixture_id}/channel/{channel}", tag = "Lighting",
     params(
         ("fixture_id" = i64, Path, description = "1=Light1, 2=Light2, 3=Fog"),
-        ("channel" = i64, Path, description = "DMX channel 1-11")
+        ("channel" = i64, Path, description = "DMX channel: 1-11 for the moving heads, 1 for the fog machine")
     ),
     request_body = ChannelSetRequest,
     responses((status = 200, description = "Channel set", body = OperationResponse))
@@ -209,11 +277,11 @@ async fn set_position(
 
 #[utoipa::path(
     post, path = "/lights/blackout", tag = "Lighting",
-    responses((status = 200, description = "All lights blacked out", body = OperationResponse))
+    responses((status = 200, description = "All lights and fog off", body = OperationResponse))
 )]
 async fn blackout(State(state): State<AppState>) -> AppResult<Json<OperationResponse>> {
     state.lighting.blackout();
-    Ok(ok("All lights blacked out"))
+    Ok(ok("All lights and fog off"))
 }
 
 #[derive(Deserialize, ToSchema)]
