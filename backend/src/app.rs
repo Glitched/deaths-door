@@ -23,6 +23,7 @@ use crate::game_manager::GameManager;
 use crate::lighting::LightingManager;
 use crate::routes;
 use crate::timer_state::TimerState;
+use crate::vote::VoteSession;
 
 /// Shared application state, injected into handlers via `State<AppState>`.
 #[derive(Clone)]
@@ -31,6 +32,8 @@ pub struct AppState {
     pub timer: Arc<TimerState>,
     pub lighting: Arc<LightingManager>,
     pub effects: Arc<EffectsEngine>,
+    /// The live vote tally, if one is being taken (ephemeral, like the timer).
+    pub vote: Arc<VoteSession>,
 }
 
 impl AppState {
@@ -50,11 +53,13 @@ impl AppState {
             Arc::clone(&lighting),
             Arc::clone(&manager),
         ));
+        let vote = Arc::new(VoteSession::new(Arc::clone(&manager)));
         AppState {
             manager,
             timer,
             lighting,
             effects,
+            vote,
         }
     }
 }
@@ -194,6 +199,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::sounds::router())
         .merge(routes::scripts::router())
         .merge(routes::game::router())
+        .merge(routes::day::router())
         .merge(routes::timer::router())
         .merge(routes::players::router())
         .merge(routes::characters::router())

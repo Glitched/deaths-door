@@ -4,8 +4,8 @@ mod common;
 
 use axum::http::StatusCode;
 use common::{
-    add_player_with_role, add_roles, find_player, game_with_players, get, get_ok, new_game, post,
-    post_ok, test_app,
+    add_player_with_role, add_roles, find_player, game_with_players, get, get_ok, get_text,
+    new_game, post, post_ok, test_app,
 };
 use serde_json::{json, Value};
 
@@ -958,6 +958,201 @@ async fn nomination_votes_resolve_the_chopping_block() {
     // Night wipes the day's nomination record.
     let state = post_ok(&app, "/game/night/begin", json!({})).await;
     assert_eq!(state["nominations_today"], json!([]));
+}
+
+#[tokio::test]
+async fn live_vote_tally_lifecycle() {
+    let app = test_app();
+    game_with_players(
+        &app,
+        &[("Alice", "Imp"), ("Bob", "Chef"), ("Carol", "Empath")],
+    )
+    .await;
+
+    // Tallies are a daytime thing, and need a session to update.
+    let (status, _) = post(&app, "/game/vote/start", json!({ "player_name": "Alice" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    post_ok(&app, "/game/day/begin", json!({})).await;
+    let (status, _) = post(&app, "/game/vote/voters", json!({ "voters": ["Bob"] })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = post(&app, "/game/vote/start", json!({ "player_name": "Ghost" })).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Start a tally; it appears in the state (and thus every SSE frame).
+    let state = post_ok(&app, "/game/vote/start", json!({ "player_name": "Alice" })).await;
+    assert_eq!(state["vote_in_progress"]["player_name"], "Alice");
+    assert_eq!(state["vote_in_progress"]["voters"], json!([]));
+
+    // Bad voter lists are rejected and leave the tally alone.
+    let (status, _) = post(
+        &app,
+        "/game/vote/voters",
+        json!({ "voters": ["Bob", "Ghost"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = post(
+        &app,
+        "/game/vote/voters",
+        json!({ "voters": ["Bob", "Bob"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["vote_in_progress"]["player_name"], "Alice");
+
+    // Each update replaces the whole selection (deselects included).
+    post_ok(
+        &app,
+        "/game/vote/voters",
+        json!({ "voters": ["Bob", "Carol"] }),
+    )
+    .await;
+    let state = post_ok(&app, "/game/vote/voters", json!({ "voters": ["Bob"] })).await;
+    assert_eq!(state["vote_in_progress"]["voters"], json!(["Bob"]));
+
+    // Cancel abandons the tally without recording anything.
+    let state = post_ok(&app, "/game/vote/cancel", json!({})).await;
+    assert_eq!(state["vote_in_progress"], json!(null));
+    assert_eq!(state["nominations_today"], json!([]));
+
+    // Confirm records the nomination exactly like POST /game/nominations.
+    post_ok(&app, "/game/vote/start", json!({ "player_name": "Alice" })).await;
+    post_ok(
+        &app,
+        "/game/vote/voters",
+        json!({ "voters": ["Bob", "Carol"] }),
+    )
+    .await;
+    let body = post_ok(&app, "/game/vote/confirm", json!({})).await;
+    assert_eq!(body["outcome"], "on_the_block");
+    assert_eq!(body["chopping_block"]["player_name"], "Alice");
+    assert_eq!(body["chopping_block"]["votes"], 2);
+    assert_eq!(body["vote_in_progress"], json!(null));
+    let (status, _) = post(&app, "/game/vote/confirm", json!({})).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // A confirm that fails validation keeps the tally up for fixing.
+    post_ok(&app, "/game/vote/start", json!({ "player_name": "Carol" })).await;
+    post_ok(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Carol", "is_alive": false }),
+    )
+    .await;
+    let (status, _) = post(&app, "/game/vote/confirm", json!({})).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST); // nominee died mid-tally
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["vote_in_progress"]["player_name"], "Carol");
+
+    // Night falling drops any open tally.
+    post_ok(&app, "/game/night/begin", json!({})).await;
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["vote_in_progress"], json!(null));
+}
+
+#[tokio::test]
+async fn game_over_hint_and_recorded_winner() {
+    let app = test_app();
+    game_with_players(
+        &app,
+        &[("Alice", "Imp"), ("Bob", "Chef"), ("Carol", "Empath")],
+    )
+    .await;
+
+    // Three living players and a living demon: nothing to report.
+    let state = get_ok(&app, "/game/state").await;
+    assert_eq!(state["game_over_hint"], json!(null));
+    assert_eq!(state["winner"], json!(null));
+
+    // The demon dying suggests good won.
+    post_ok(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Alice", "is_alive": false }),
+    )
+    .await;
+    let state = get_ok(&app, "/game/state").await;
+    let hint = state["game_over_hint"].as_str().unwrap();
+    assert!(hint.contains("demon is dead"), "{hint}");
+
+    // Two players left with the demon standing suggests evil won.
+    post_ok(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Alice", "is_alive": true }),
+    )
+    .await;
+    post_ok(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Bob", "is_alive": false }),
+    )
+    .await;
+    let state = get_ok(&app, "/game/state").await;
+    let hint = state["game_over_hint"].as_str().unwrap();
+    assert!(hint.contains("evil may have won"), "{hint}");
+
+    // The storyteller makes the call; unknown isn't a team.
+    let (status, _) = post(&app, "/game/end", json!({ "winner": "unknown" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let state = post_ok(&app, "/game/end", json!({ "winner": "evil" })).await;
+    assert_eq!(state["winner"], "evil");
+    assert_eq!(state["game_over_hint"], json!(null));
+    let (status, _) = post(&app, "/game/end", json!({ "winner": "good" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn journal_reads_like_a_story() {
+    // Announcements fire the death scene; keep the test run quiet.
+    std::env::set_var("DEATHS_DOOR_MUTE", "1");
+
+    let app = test_app();
+    game_with_players(&app, &[("Alice", "Imp"), ("Bob", "Chef")]).await;
+
+    // A tiny game: Bob dies overnight, is announced at dawn, Alice gets
+    // nominated and executed, evil wins.
+    post_ok(
+        &app,
+        "/players/set_alive",
+        json!({ "name": "Bob", "is_alive": false }),
+    )
+    .await;
+    post_ok(&app, "/game/day/begin", json!({})).await;
+    post_ok(
+        &app,
+        "/game/day/announce_death",
+        json!({ "player_name": "Bob" }),
+    )
+    .await;
+    post_ok(
+        &app,
+        "/game/nominations",
+        json!({ "player_name": "Alice", "voters": ["Alice"] }),
+    )
+    .await;
+    post_ok(&app, "/game/day/end", json!({})).await;
+    post_ok(&app, "/game/end", json!({ "winner": "evil" })).await;
+
+    let (status, journal) = get_text(&app, "/game/journal").await;
+    assert_eq!(status, StatusCode::OK);
+    for expected in [
+        "# Blood on the Clocktower: Trouble Brewing",
+        "## Setup & first night",
+        "- Alice joined as Imp",
+        "- Bob died",
+        "## Day 1",
+        "- Bob's death was announced",
+        "- Alice was nominated: 1 vote (Alice)",
+        "- Alice was executed",
+        "**Evil wins!**",
+    ] {
+        assert!(
+            journal.contains(expected),
+            "journal missing {expected:?}:\n{journal}"
+        );
+    }
 }
 
 #[tokio::test]

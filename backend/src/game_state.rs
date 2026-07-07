@@ -113,6 +113,10 @@ pub struct GameState {
     /// Nominations resolved today. Cleared when night begins.
     #[serde(default)]
     pub nominations_today: Vec<Nomination>,
+    /// Which team won ("good"/"evil"), once the storyteller has ended the game
+    /// via `POST /game/end`. `None` while the game is running.
+    #[serde(default)]
+    pub winner: Option<String>,
     pub version: i64,
 }
 
@@ -138,6 +142,7 @@ impl GameState {
             day_number: 0,
             deaths_to_announce: Vec::new(),
             nominations_today: Vec::new(),
+            winner: None,
             version: 0,
         }
     }
@@ -214,6 +219,33 @@ impl GameState {
     /// nominated at most once per day).
     pub fn was_nominated_today(&self, name: &str) -> bool {
         self.nominations_today.iter().any(|n| n.player_name == name)
+    }
+
+    /// A heads-up that the game may be over. The storyteller confirms with
+    /// `POST /game/end` — abilities like the Scarlet Woman can keep a game
+    /// going, so this is a hint, never a ruling.
+    pub fn game_over_hint(&self) -> Option<String> {
+        if self.winner.is_some() {
+            return None;
+        }
+        let demons: Vec<&PlayerState> = self
+            .players
+            .iter()
+            .filter(|p| {
+                self.get_character(&p.character_name)
+                    .is_some_and(|c| c.category == crate::character_type::CharacterType::Demon)
+            })
+            .collect();
+        if demons.is_empty() {
+            return None; // no demon in play (yet)
+        }
+        if demons.iter().all(|p| !p.is_alive) {
+            Some("The demon is dead — good may have won (unless a Scarlet Woman inherits).".into())
+        } else if self.living_player_count() <= 2 {
+            Some("Only two players live and the demon stands — evil may have won.".into())
+        } else {
+            None
+        }
     }
 
     // --- Night steps ---

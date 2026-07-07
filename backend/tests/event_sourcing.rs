@@ -775,6 +775,7 @@ fn all_payload_variants() -> Vec<EventPayload> {
             player_name: s("Alice"),
             cleared_effects: vec![(s("Cara"), s("Poisoned"))],
         },
+        EventPayload::GameEnded { winner: s("good") },
     ]
 }
 
@@ -1107,6 +1108,47 @@ fn execution_kills_publicly_and_clears_the_block() {
     assert!(state.chopping_block.is_none());
     // Executions are public: nothing queues for announcement.
     assert!(state.deaths_to_announce.is_empty());
+}
+
+#[test]
+fn game_over_hint_and_recorded_winner() {
+    // No demon in play: no hint, whatever the counts.
+    let state = game_with_roles(&["Chef", "Empath"]);
+    let state = add_player(&state, "Bob", "Chef", "good");
+    assert_eq!(state.game_over_hint(), None);
+
+    let state = game_with_roles(&["Imp", "Chef", "Empath"]);
+    let state = add_player(&state, "Alice", "Imp", "evil");
+    let state = add_player(&state, "Bob", "Chef", "good");
+    let state = add_player(&state, "Carol", "Empath", "good");
+    assert_eq!(state.game_over_hint(), None);
+
+    // Demon dead -> good may have won.
+    let dead_demon = set_alive(&state, "Alice", false);
+    assert!(dead_demon
+        .game_over_hint()
+        .unwrap()
+        .contains("demon is dead"));
+
+    // Two living players with the demon standing -> evil may have won.
+    let two_left = set_alive(&state, "Bob", false);
+    assert!(two_left
+        .game_over_hint()
+        .unwrap()
+        .contains("evil may have won"));
+
+    // Recording the winner stores it and silences the hint.
+    let ended = apply(
+        &two_left,
+        &evt(
+            &two_left,
+            EventPayload::GameEnded {
+                winner: "evil".to_string(),
+            },
+        ),
+    );
+    assert_eq!(ended.winner.as_deref(), Some("evil"));
+    assert_eq!(ended.game_over_hint(), None);
 }
 
 // --- Event store ---

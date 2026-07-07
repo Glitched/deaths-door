@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { TimerDisplay } from "@/components/timer/TimerDisplay";
 import { PlayerList } from "@/components/players/PlayerList";
 import { ChoppingBlockDisplay } from "@/components/players/ChoppingBlockDisplay";
+import { VoteTallyDisplay } from "@/components/players/VoteTallyDisplay";
 import { EffectOverlay } from "@/components/effects/EffectOverlay";
 import { useGameState } from "@/hooks/useGameState";
 import { isNightPhase } from "@/api/types";
@@ -19,7 +20,13 @@ export function OverlayPage() {
       <EffectOverlay effect={gameState?.active_effect ?? null} />
       <TimerDisplay timer={gameState?.timer ?? null} />
       {gameState && !night && (
-        gameState.chopping_block ? (
+        gameState.vote_in_progress ? (
+          <VoteTallyDisplay
+            vote={gameState.vote_in_progress}
+            executionThreshold={gameState.execution_threshold}
+            block={gameState.chopping_block}
+          />
+        ) : gameState.chopping_block ? (
           <ChoppingBlockDisplay
             block={gameState.chopping_block}
             executionThreshold={gameState.execution_threshold}
