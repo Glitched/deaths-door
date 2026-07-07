@@ -25,6 +25,8 @@ export function OverlayPage() {
             vote={gameState.vote_in_progress}
             executionThreshold={gameState.execution_threshold}
             block={gameState.chopping_block}
+            tiedVotes={gameState.tied_votes}
+            votesToTakeBlock={gameState.votes_to_take_block}
           />
         ) : gameState.chopping_block ? (
           <ChoppingBlockDisplay
@@ -40,7 +42,9 @@ export function OverlayPage() {
                   "'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif",
               }}
             >
-              {gameState.execution_threshold} to convict
+              {gameState.tied_votes != null
+                ? `tied at ${gameState.tied_votes} · ${gameState.votes_to_take_block ?? gameState.tied_votes + 1} to beat`
+                : `${gameState.execution_threshold} to convict`}
             </div>
             <PlayerList players={gameState.players} />
           </>

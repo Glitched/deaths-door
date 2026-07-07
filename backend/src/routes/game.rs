@@ -99,6 +99,14 @@ pub struct GameStateBase {
     /// Everyone currently allowed to vote: living players plus dead players
     /// holding their one dead vote.
     pub eligible_voters: Vec<String>,
+    /// The vote count at which nominations tied, emptying the chopping block.
+    /// The tie stands for the rest of the day: matching it re-ties, only
+    /// beating it takes the block. `null` unless a tie is standing.
+    pub tied_votes: Option<u32>,
+    /// Votes a new nomination needs to put its nominee on the block right
+    /// now: the execution threshold, raised above any current block votes or
+    /// standing tie. Matching the standing count exactly (re-)ties instead.
+    pub votes_to_take_block: u32,
     /// Which team won, once the storyteller ended the game via `POST /game/end`.
     pub winner: Option<Alignment>,
     /// A heads-up that the game may be over (demon dead, or two players left
@@ -138,6 +146,8 @@ pub fn game_state_base(state: &GameState) -> GameStateBase {
         deaths_to_announce: state.deaths_to_announce.clone(),
         nominations_today: state.nominations_today.clone(),
         eligible_voters: state.eligible_voters(),
+        tied_votes: state.tied_votes,
+        votes_to_take_block: state.votes_to_take_block(),
         winner: state
             .winner
             .as_deref()
@@ -500,16 +510,17 @@ async fn set_chopping_block(
     Ok(Json(build_game_state_response(&state).await?))
 }
 
-/// Clear the chopping block (e.g. a later nomination tied the vote count).
+/// Clear the chopping block, along with any standing tied vote count.
 ///
-/// Safe to call when nothing is on the block — no event is recorded.
+/// Safe to call when nothing is on the block and no tie stands — no event is
+/// recorded in that case.
 #[utoipa::path(
     post, path = "/game/chopping_block/clear", tag = "Game",
     responses((status = 200, description = "Chopping block cleared; full game state returned", body = GameStateResponse))
 )]
 async fn clear_chopping_block(State(state): State<AppState>) -> AppResult<Json<GameStateResponse>> {
     let game = state.manager.get_state().await?;
-    if game.chopping_block.is_some() {
+    if game.chopping_block.is_some() || game.tied_votes.is_some() {
         state
             .manager
             .dispatch(EventPayload::ChoppingBlockCleared)

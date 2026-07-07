@@ -4,6 +4,10 @@ interface VoteTallyDisplayProps {
   vote: VoteInProgress;
   executionThreshold: number;
   block: ChoppingBlock | null;
+  /** Vote count where earlier nominations tied (stands all day), if any. */
+  tiedVotes?: number | null;
+  /** Backend-computed votes needed to take the block right now. */
+  votesToTakeBlock?: number;
 }
 
 // Shown while the storyteller tallies a vote: the nominee, the count climbing
@@ -13,18 +17,22 @@ export function VoteTallyDisplay({
   vote,
   executionThreshold,
   block,
+  tiedVotes,
+  votesToTakeBlock,
 }: VoteTallyDisplayProps) {
   const count = vote.voters.length;
-  // The number that matters: the current block's votes (tie clears, one more
-  // steals) when someone is already on the block, else the base threshold.
+  // The standing count to beat: the current block's votes, or the count a
+  // previous tie locked in for the day.
+  const standing = block?.votes ?? tiedVotes ?? null;
   const target =
-    block && block.votes != null
-      ? Math.max(executionThreshold, block.votes + 1)
-      : executionThreshold;
+    votesToTakeBlock ??
+    (standing != null
+      ? Math.max(executionThreshold, standing + 1)
+      : executionThreshold);
   const reached = count >= target;
   const subtitle =
-    block && block.votes != null
-      ? `${block.votes} ties · ${Math.max(executionThreshold, block.votes + 1)} takes the block`
+    standing != null
+      ? `${standing} ties · ${target} takes the block`
       : `${executionThreshold} to convict`;
 
   return (

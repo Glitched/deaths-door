@@ -48,6 +48,10 @@ export interface GameState {
   is_first_night: boolean;
   phase?: "day" | "night";
   chopping_block: ChoppingBlock | null;
+  /** Vote count where nominations tied (the tie stands all day); null otherwise. */
+  tied_votes?: number | null;
+  /** Votes a new nomination needs right now to take the block. */
+  votes_to_take_block?: number;
   vote_in_progress?: VoteInProgress | null;
   winner?: string | null;
   game_over_hint?: string | null;
