@@ -5,7 +5,7 @@ use uuid::Uuid;
 use deaths_door::apply::{apply, replay};
 use deaths_door::event_store::EventStore;
 use deaths_door::events::{describe_event, EventPayload, GameEvent};
-use deaths_door::game_state::{ChoppingBlock, GameState};
+use deaths_door::game_state::{ChoppingBlock, GameState, NominationOutcome, Phase};
 
 fn evt(state: &GameState, payload: EventPayload) -> GameEvent {
     GameEvent::new(state.game_id, state.version, payload)
@@ -761,6 +761,20 @@ fn all_payload_variants() -> Vec<EventPayload> {
             votes: Some(4),
         },
         EventPayload::ChoppingBlockCleared,
+        EventPayload::DayBegan,
+        EventPayload::NightBegan,
+        EventPayload::DeathAnnounced {
+            player_name: s("Alice"),
+        },
+        EventPayload::NominationRecorded {
+            player_name: s("Alice"),
+            voters: vec![s("Bob"), s("Carol")],
+            votes: 2,
+        },
+        EventPayload::PlayerExecuted {
+            player_name: s("Alice"),
+            cleared_effects: vec![(s("Cara"), s("Poisoned"))],
+        },
     ]
 }
 
@@ -823,6 +837,276 @@ fn describe_event_is_human_readable() {
         cleared_effects: vec![],
     };
     assert_eq!(describe_event(&p), "Yash died");
+}
+
+// --- Day/night phase and nominations ---
+
+fn set_alive(state: &GameState, name: &str, is_alive: bool) -> GameState {
+    apply(
+        state,
+        &evt(
+            state,
+            EventPayload::PlayerAliveSet {
+                player_name: name.to_string(),
+                is_alive,
+                cleared_effects: vec![],
+            },
+        ),
+    )
+}
+
+#[test]
+fn phase_transitions_and_day_counting() {
+    let state = game_with_roles(&["Imp"]);
+    // Games open on the first night.
+    assert_eq!(state.phase, Phase::Night);
+    assert_eq!(state.day_number, 0);
+    assert!(state.is_first_night);
+
+    let day = apply(&state, &evt(&state, EventPayload::DayBegan));
+    assert_eq!(day.phase, Phase::Day);
+    assert_eq!(day.day_number, 1);
+    assert_eq!(day.current_night_step, "Dawn");
+    assert!(day.is_first_night); // untouched until a night begins
+
+    let night = apply(&day, &evt(&day, EventPayload::NightBegan));
+    assert_eq!(night.phase, Phase::Night);
+    assert_eq!(night.current_night_step, "Dusk");
+    assert!(!night.is_first_night); // a night after a day is never the first
+
+    // The raw night-step bookmark keeps the phase coherent for old clients.
+    let via_step = apply(
+        &night,
+        &evt(
+            &night,
+            EventPayload::NightStepSet {
+                step: "Dawn".to_string(),
+            },
+        ),
+    );
+    assert_eq!(via_step.phase, Phase::Day);
+    let back = apply(
+        &via_step,
+        &evt(
+            &via_step,
+            EventPayload::NightStepSet {
+                step: "Poisoner".to_string(),
+            },
+        ),
+    );
+    assert_eq!(back.phase, Phase::Night);
+}
+
+#[test]
+fn night_deaths_queue_for_announcement_and_day_deaths_do_not() {
+    let state = game_with_roles(&["Imp", "Chef", "Mayor"]);
+    let state = add_player(&state, "Alice", "Imp", "evil");
+    let state = add_player(&state, "Bob", "Chef", "good");
+
+    // Night kill -> queued (once, even if re-marked dead).
+    let state = set_alive(&state, "Alice", false);
+    let state = set_alive(&state, "Alice", false);
+    assert_eq!(state.deaths_to_announce, vec!["Alice"]);
+
+    // Revival takes the death back off the queue.
+    let state = set_alive(&state, "Alice", true);
+    assert!(state.deaths_to_announce.is_empty());
+
+    // A daytime death is public — nothing to announce.
+    let state = set_alive(&state, "Alice", false);
+    let day = apply(&state, &evt(&state, EventPayload::DayBegan));
+    let day = set_alive(&day, "Bob", false);
+    assert_eq!(day.deaths_to_announce, vec!["Alice"]);
+
+    // Announcing checks the player off; renames follow; removal drops them.
+    let announced = apply(
+        &day,
+        &evt(
+            &day,
+            EventPayload::DeathAnnounced {
+                player_name: "Alice".to_string(),
+            },
+        ),
+    );
+    assert!(announced.deaths_to_announce.is_empty());
+
+    let renamed = apply(
+        &day,
+        &evt(
+            &day,
+            EventPayload::PlayerRenamed {
+                old_name: "Alice".to_string(),
+                new_name: "Alicia".to_string(),
+            },
+        ),
+    );
+    assert_eq!(renamed.deaths_to_announce, vec!["Alicia"]);
+
+    let removed = apply(
+        &day,
+        &evt(
+            &day,
+            EventPayload::PlayerRemoved {
+                player_name: "Alice".to_string(),
+            },
+        ),
+    );
+    assert!(removed.deaths_to_announce.is_empty());
+}
+
+#[test]
+fn nominations_resolve_the_chopping_block() {
+    // Five players, all alive -> threshold ceil(5/2) = 3.
+    let mut state = game_with_roles(&["Imp", "Chef", "Empath", "Mayor", "Monk"]);
+    for (n, r) in [
+        ("Alice", "Imp"),
+        ("Bob", "Chef"),
+        ("Carol", "Empath"),
+        ("Dave", "Mayor"),
+        ("Erin", "Monk"),
+    ] {
+        state = add_player(&state, n, r, "good");
+    }
+    let state = apply(&state, &evt(&state, EventPayload::DayBegan));
+    let nominate = |state: &GameState, nominee: &str, voters: &[&str], votes: u32| {
+        apply(
+            state,
+            &evt(
+                state,
+                EventPayload::NominationRecorded {
+                    player_name: nominee.to_string(),
+                    voters: voters.iter().map(|v| v.to_string()).collect(),
+                    votes,
+                },
+            ),
+        )
+    };
+
+    // Below threshold: nothing happens.
+    let state = nominate(&state, "Alice", &["Bob", "Carol"], 2);
+    assert_eq!(
+        state.nominations_today.last().unwrap().outcome,
+        NominationOutcome::BlockUnchanged
+    );
+    assert!(state.chopping_block.is_none());
+
+    // Meets threshold on an empty block: on the block.
+    let state = nominate(&state, "Bob", &["Alice", "Carol", "Dave"], 3);
+    assert_eq!(
+        state.nominations_today.last().unwrap().outcome,
+        NominationOutcome::OnTheBlock
+    );
+    assert_eq!(state.chopping_block.as_ref().unwrap().player_name, "Bob");
+    assert_eq!(state.chopping_block.as_ref().unwrap().votes, Some(3));
+
+    // Fewer votes than the block: unchanged.
+    let state = nominate(&state, "Carol", &["Alice", "Bob", "Erin"], 3 - 1);
+    assert_eq!(
+        state.nominations_today.last().unwrap().outcome,
+        NominationOutcome::BlockUnchanged
+    );
+    assert_eq!(state.chopping_block.as_ref().unwrap().player_name, "Bob");
+
+    // Tie: the block empties (no one is executed on a tie).
+    let state = nominate(&state, "Dave", &["Alice", "Bob", "Erin"], 3);
+    assert_eq!(
+        state.nominations_today.last().unwrap().outcome,
+        NominationOutcome::TieBlockEmptied
+    );
+    assert!(state.chopping_block.is_none());
+
+    // Beat: takes the (re-)block.
+    let state = nominate(&state, "Erin", &["Alice", "Bob", "Carol", "Dave"], 4);
+    assert_eq!(state.chopping_block.as_ref().unwrap().player_name, "Erin");
+
+    // Night clears the day's nomination record and the block.
+    let night = apply(&state, &evt(&state, EventPayload::NightBegan));
+    assert!(night.nominations_today.is_empty());
+    assert!(night.chopping_block.is_none());
+}
+
+#[test]
+fn nominations_spend_dead_votes_and_beat_uncounted_blocks() {
+    let state = game_with_roles(&["Imp", "Chef", "Empath"]);
+    let state = add_player(&state, "Alice", "Imp", "evil");
+    let state = add_player(&state, "Bob", "Chef", "good");
+    let state = add_player(&state, "Carol", "Empath", "good");
+    let state = set_alive(&state, "Bob", false);
+    let state = apply(&state, &evt(&state, EventPayload::DayBegan));
+
+    // A manually-set block with no recorded votes is replaced by any
+    // threshold-meeting vote (threshold: ceil(2/2) = 1).
+    let state = apply(
+        &state,
+        &evt(
+            &state,
+            EventPayload::ChoppingBlockSet {
+                player_name: "Carol".to_string(),
+                votes: None,
+            },
+        ),
+    );
+    let state = apply(
+        &state,
+        &evt(
+            &state,
+            EventPayload::NominationRecorded {
+                player_name: "Alice".to_string(),
+                voters: vec!["Bob".to_string(), "Carol".to_string()],
+                votes: 2,
+            },
+        ),
+    );
+    assert_eq!(state.chopping_block.as_ref().unwrap().player_name, "Alice");
+
+    // Dead Bob voted: his one dead vote is spent. Living Carol's isn't.
+    assert!(state.get_player("Bob").unwrap().has_used_dead_vote);
+    assert!(!state.get_player("Carol").unwrap().has_used_dead_vote);
+    assert_eq!(state.eligible_voters(), vec!["Alice", "Carol"]);
+}
+
+#[test]
+fn execution_kills_publicly_and_clears_the_block() {
+    let state = game_with_roles(&["Poisoner", "Chef"]);
+    let state = add_player(&state, "Pat", "Poisoner", "evil");
+    let state = add_player(&state, "Cara", "Chef", "good");
+    let state = apply(
+        &state,
+        &evt(
+            &state,
+            EventPayload::StatusEffectAdded {
+                player_name: "Cara".to_string(),
+                effect: "Poisoned".to_string(),
+            },
+        ),
+    );
+    let state = apply(&state, &evt(&state, EventPayload::DayBegan));
+    let state = apply(
+        &state,
+        &evt(
+            &state,
+            EventPayload::ChoppingBlockSet {
+                player_name: "Pat".to_string(),
+                votes: Some(2),
+            },
+        ),
+    );
+
+    let state = apply(
+        &state,
+        &evt(
+            &state,
+            EventPayload::PlayerExecuted {
+                player_name: "Pat".to_string(),
+                cleared_effects: vec![("Cara".to_string(), "Poisoned".to_string())],
+            },
+        ),
+    );
+    assert!(!state.get_player("Pat").unwrap().is_alive);
+    assert!(state.get_player("Cara").unwrap().status_effects.is_empty());
+    assert!(state.chopping_block.is_none());
+    // Executions are public: nothing queues for announcement.
+    assert!(state.deaths_to_announce.is_empty());
 }
 
 // --- Event store ---

@@ -86,6 +86,29 @@ pub enum EventPayload {
         votes: Option<u32>,
     },
     ChoppingBlockCleared,
+    /// Dawn breaks: the game enters the day phase.
+    DayBegan,
+    /// Dusk falls: the game enters the night phase; the day's nominations and
+    /// chopping block are cleared.
+    NightBegan,
+    /// A night death was announced to the players.
+    DeathAnnounced {
+        player_name: String,
+    },
+    /// A nomination's vote was confirmed. `votes` is the counted total (it can
+    /// differ from `voters.len()`, e.g. a Bureaucrat's triple vote); the
+    /// chopping-block resolution happens in `apply`.
+    NominationRecorded {
+        player_name: String,
+        voters: Vec<String>,
+        votes: u32,
+    },
+    /// The player on the chopping block was executed at the end of the day.
+    PlayerExecuted {
+        player_name: String,
+        #[serde(default)]
+        cleared_effects: Vec<(String, String)>,
+    },
 }
 
 impl EventPayload {
@@ -112,6 +135,11 @@ impl EventPayload {
             EventPayload::DemonBluffsSet { .. } => "demon_bluffs_set",
             EventPayload::ChoppingBlockSet { .. } => "chopping_block_set",
             EventPayload::ChoppingBlockCleared => "chopping_block_cleared",
+            EventPayload::DayBegan => "day_began",
+            EventPayload::NightBegan => "night_began",
+            EventPayload::DeathAnnounced { .. } => "death_announced",
+            EventPayload::NominationRecorded { .. } => "nomination_recorded",
+            EventPayload::PlayerExecuted { .. } => "player_executed",
         }
     }
 }
@@ -238,5 +266,22 @@ pub fn describe_event(payload: &EventPayload) -> String {
             None => format!("{player_name} is on the chopping block"),
         },
         EventPayload::ChoppingBlockCleared => "Chopping block cleared".to_string(),
+        EventPayload::DayBegan => "Day began".to_string(),
+        EventPayload::NightBegan => "Night fell".to_string(),
+        EventPayload::DeathAnnounced { player_name } => {
+            format!("{player_name}'s death was announced")
+        }
+        EventPayload::NominationRecorded {
+            player_name,
+            voters,
+            votes,
+        } => {
+            format!(
+                "{player_name} was nominated: {votes} vote{} ({})",
+                if *votes == 1 { "" } else { "s" },
+                voters.join(", ")
+            )
+        }
+        EventPayload::PlayerExecuted { player_name, .. } => format!("{player_name} was executed"),
     }
 }

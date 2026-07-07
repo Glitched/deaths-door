@@ -2,7 +2,9 @@
 
 use crate::error::GameError;
 use crate::events::{EventPayload, GameEvent};
-use crate::game_state::{ChoppingBlock, GameState, PlayerState};
+use crate::game_state::{
+    ChoppingBlock, GameState, Nomination, NominationOutcome, Phase, PlayerState,
+};
 
 fn normalize(s: &str) -> String {
     s.to_lowercase().trim().to_string()
@@ -28,9 +30,13 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
         EventPayload::NightStepSet { step } => {
             let mut next = state.clone();
             next.current_night_step = step.clone();
-            // The chopping block only exists during the day; entering night
-            // (any step other than "Dawn") resolves it.
-            if step.as_str() != "Dawn" {
+            // The phase follows the bookmark ("Dawn" is the day marker), so
+            // clients driving raw steps keep the phase coherent. The chopping
+            // block only exists during the day; entering night resolves it.
+            if step.as_str() == "Dawn" {
+                next.phase = Phase::Day;
+            } else {
+                next.phase = Phase::Night;
                 next.chopping_block = None;
             }
             next.version += 1;
@@ -41,6 +47,7 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
             let mut next = state.clone();
             next.is_first_night = *is_first_night;
             next.current_night_step = "Dusk".to_string();
+            next.phase = Phase::Night;
             next.chopping_block = None;
             next.version += 1;
             next
@@ -115,6 +122,7 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
                 next.included_role_names.push(removed.character_name);
             }
             clear_chopping_block_for(&mut next, player_name);
+            next.deaths_to_announce.retain(|n| n != player_name);
             next.version += 1;
             next
         }
@@ -124,6 +132,21 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
             if let Some(block) = &mut next.chopping_block {
                 if &block.player_name == old_name {
                     block.player_name = new_name.clone();
+                }
+            }
+            for name in next.deaths_to_announce.iter_mut() {
+                if name == old_name {
+                    *name = new_name.clone();
+                }
+            }
+            for nomination in next.nominations_today.iter_mut() {
+                if &nomination.player_name == old_name {
+                    nomination.player_name = new_name.clone();
+                }
+                for voter in nomination.voters.iter_mut() {
+                    if voter == old_name {
+                        *voter = new_name.clone();
+                    }
                 }
             }
             next.version += 1;
@@ -151,6 +174,7 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
             is_alive,
             cleared_effects,
         } => {
+            let player_exists = state.get_player(player_name).is_some();
             let mut next = state.replace_player(player_name, |p| p.is_alive = *is_alive);
             // Apply cascading effect removals.
             for (target_name, effect) in cleared_effects {
@@ -158,9 +182,20 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
                     p.status_effects.retain(|e| e != effect);
                 });
             }
-            // A dead player can't be executed; their block resolves.
             if !*is_alive {
+                // A dead player can't be executed; their block resolves.
                 clear_chopping_block_for(&mut next, player_name);
+                // Night deaths are secret until announced at dawn (day deaths
+                // are public as they happen).
+                if player_exists
+                    && next.phase == Phase::Night
+                    && !next.deaths_to_announce.iter().any(|n| n == player_name)
+                {
+                    next.deaths_to_announce.push(player_name.clone());
+                }
+            } else {
+                // A revived player has no death to announce.
+                next.deaths_to_announce.retain(|n| n != player_name);
             }
             next.version += 1;
             next
@@ -232,6 +267,105 @@ pub fn apply(state: &GameState, event: &GameEvent) -> GameState {
             next.version += 1;
             next
         }
+
+        EventPayload::DayBegan => {
+            let mut next = state.clone();
+            next.phase = Phase::Day;
+            next.current_night_step = "Dawn".to_string();
+            next.day_number += 1;
+            next.version += 1;
+            next
+        }
+
+        EventPayload::NightBegan => {
+            let mut next = state.clone();
+            next.phase = Phase::Night;
+            next.current_night_step = "Dusk".to_string();
+            // The first night is the one the game starts in; a night begun
+            // after any day is a later night.
+            next.is_first_night = next.day_number == 0;
+            next.chopping_block = None;
+            next.nominations_today.clear();
+            next.version += 1;
+            next
+        }
+
+        EventPayload::DeathAnnounced { player_name } => {
+            let mut next = state.clone();
+            next.deaths_to_announce.retain(|n| n != player_name);
+            next.version += 1;
+            next
+        }
+
+        EventPayload::NominationRecorded {
+            player_name,
+            voters,
+            votes,
+        } => {
+            let mut next = state.clone();
+            // Dead voters spend their one dead vote.
+            for voter in voters {
+                next = next.replace_player(voter, |p| {
+                    if !p.is_alive {
+                        p.has_used_dead_vote = true;
+                    }
+                });
+            }
+            let outcome = resolve_nomination(&mut next, player_name, *votes);
+            next.nominations_today.push(Nomination {
+                player_name: player_name.clone(),
+                votes: *votes,
+                voters: voters.clone(),
+                outcome,
+            });
+            next.version += 1;
+            next
+        }
+
+        EventPayload::PlayerExecuted {
+            player_name,
+            cleared_effects,
+        } => {
+            let mut next = state.replace_player(player_name, |p| p.is_alive = false);
+            for (target_name, effect) in cleared_effects {
+                next = next.replace_player(target_name, |p| {
+                    p.status_effects.retain(|e| e != effect);
+                });
+            }
+            // Executions are public: the block resolves and there is nothing
+            // to announce at dawn.
+            clear_chopping_block_for(&mut next, player_name);
+            next.version += 1;
+            next
+        }
+    }
+}
+
+/// Apply a confirmed nomination's vote count to the chopping block.
+///
+/// Meeting the execution threshold AND beating the current block takes the
+/// block; exactly tying the current block's votes empties it (a tie means no
+/// one is executed); anything less changes nothing. A block whose vote count
+/// was never recorded (set manually without votes) is replaced by any
+/// threshold-meeting vote and can't be tied.
+fn resolve_nomination(state: &mut GameState, nominee: &str, votes: u32) -> NominationOutcome {
+    let threshold = state.execution_threshold() as u32;
+    let block_votes = state.chopping_block.as_ref().map(|b| b.votes);
+    let beats_block = match block_votes {
+        None | Some(None) => true,
+        Some(Some(current)) => votes > current,
+    };
+    if votes >= threshold && beats_block {
+        state.chopping_block = Some(ChoppingBlock {
+            player_name: nominee.to_string(),
+            votes: Some(votes),
+        });
+        NominationOutcome::OnTheBlock
+    } else if matches!(block_votes, Some(Some(current)) if current == votes) {
+        state.chopping_block = None;
+        NominationOutcome::TieBlockEmptied
+    } else {
+        NominationOutcome::BlockUnchanged
     }
 }
 

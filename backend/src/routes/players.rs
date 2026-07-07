@@ -13,7 +13,9 @@ use utoipa_axum::routes;
 use crate::alignment::Alignment;
 use crate::app::{AppError, AppJson, AppResult, AppState};
 use crate::events::EventPayload;
-use crate::game_state::{player_state_to_out, GameState, PlayerState};
+use crate::game_state::{
+    compute_death_cleared_effects, player_state_to_out, GameState, PlayerState,
+};
 use crate::lighting::LightingScene;
 use crate::player::PlayerOut;
 
@@ -53,36 +55,6 @@ fn to_out(state: &GameState, name: &str) -> AppResult<PlayerOut> {
         .get_script()
         .ok_or_else(|| AppError::internal("No script loaded"))?;
     Ok(player_state_to_out(player, script))
-}
-
-/// Persistent status effects to clear when a character dies (death cleanup).
-fn character_persistent_effects(character_name: &str) -> &'static [&'static str] {
-    match character_name {
-        "Poisoner" => &["Poisoned"],
-        "Monk" => &["Safe"],
-        "Butler" => &["Butler's Master"],
-        _ => &[],
-    }
-}
-
-/// Cascading status-effect removals when a player dies.
-fn compute_death_cleared_effects(state: &GameState, player_name: &str) -> Vec<(String, String)> {
-    let Some(player) = state.get_player(player_name) else {
-        return Vec::new();
-    };
-    let effects_to_remove = character_persistent_effects(&player.character_name);
-    if effects_to_remove.is_empty() {
-        return Vec::new();
-    }
-    let mut cleared = Vec::new();
-    for p in &state.players {
-        for effect in effects_to_remove {
-            if p.status_effects.iter().any(|e| e == effect) {
-                cleared.push((p.name.clone(), effect.to_string()));
-            }
-        }
-    }
-    cleared
 }
 
 async fn push_counts(state: &AppState, game: &GameState) {
@@ -295,7 +267,9 @@ async fn set_player_alive(
         })
         .await?;
     push_counts(&state, &new_state).await;
-    if died && state.effects.auto_effects().death {
+    // Night deaths stay secret (they queue for announcement at dawn instead);
+    // only public daytime deaths get the automatic scene.
+    if died && new_state.is_day() && state.effects.auto_effects().death {
         state.effects.trigger(LightingScene::Death, false).await;
     }
     Ok(Json(to_out(&new_state, &req.name)?))

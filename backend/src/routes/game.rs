@@ -19,7 +19,8 @@ use crate::character::CharacterOut;
 use crate::effects::ActiveEffect;
 use crate::events::{describe_event, EventPayload};
 use crate::game_state::{
-    game_state_to_included_role_outs, player_state_to_out, ChoppingBlock, GameState,
+    compute_death_cleared_effects, game_state_to_included_role_outs, player_state_to_out,
+    ChoppingBlock, GameState, Nomination, NominationOutcome, Phase,
 };
 use crate::lighting::LightingScene;
 use crate::night_step::NightStep;
@@ -44,6 +45,11 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(set_demon_bluffs))
         .routes(routes!(set_chopping_block))
         .routes(routes!(clear_chopping_block))
+        .routes(routes!(begin_day))
+        .routes(routes!(announce_death))
+        .routes(routes!(record_nomination))
+        .routes(routes!(end_day))
+        .routes(routes!(begin_night))
         .routes(routes!(get_game_history))
         .routes(routes!(rewind_game))
         .routes(routes!(fork_game))
@@ -79,6 +85,21 @@ pub struct GameStateBase {
     /// Votes needed to execute (>= 50% of living players).
     pub execution_threshold: usize,
     pub dead_players_with_vote: Vec<String>,
+    /// Whether it is day or night — the app's day/night mode switch. Driven by
+    /// `POST /game/day/begin` / `POST /game/night/begin` (and kept coherent
+    /// with the night-step bookmark: "Dawn" = day).
+    pub phase: Phase,
+    /// How many days have begun (0 during setup and the first night).
+    pub day_number: u32,
+    /// Night deaths not yet announced. Announce each via
+    /// `POST /game/day/announce_death` (which also fires the death scene).
+    pub deaths_to_announce: Vec<String>,
+    /// Nominations resolved today via `POST /game/nominations`. Cleared when
+    /// night begins; players listed here can't be nominated again today.
+    pub nominations_today: Vec<Nomination>,
+    /// Everyone currently allowed to vote: living players plus dead players
+    /// holding their one dead vote.
+    pub eligible_voters: Vec<String>,
 }
 
 pub fn game_state_base(state: &GameState) -> GameStateBase {
@@ -108,6 +129,11 @@ pub fn game_state_base(state: &GameState) -> GameStateBase {
         living_player_count: state.living_player_count(),
         execution_threshold: state.execution_threshold(),
         dead_players_with_vote: state.get_dead_players_with_vote(),
+        phase: state.phase,
+        day_number: state.day_number,
+        deaths_to_announce: state.deaths_to_announce.clone(),
+        nominations_today: state.nominations_today.clone(),
+        eligible_voters: state.eligible_voters(),
     }
 }
 
@@ -471,6 +497,249 @@ async fn clear_chopping_block(State(state): State<AppState>) -> AppResult<Json<G
             .await?;
     }
     Ok(Json(build_game_state_response(&state).await?))
+}
+
+// --- Day/night cycle and nominations ---
+
+/// Begin the day: dawn breaks and the game enters day mode.
+///
+/// Deaths that happened overnight are waiting in `deaths_to_announce`;
+/// announce them via `POST /game/day/announce_death`, run nominations via
+/// `POST /game/nominations`, then close out with `POST /game/day/end` and
+/// `POST /game/night/begin`.
+#[utoipa::path(
+    post, path = "/game/day/begin", tag = "Game",
+    responses(
+        (status = 200, description = "Day begun; full game state returned", body = GameStateResponse),
+        (status = 400, description = "It is already daytime")
+    )
+)]
+async fn begin_day(State(state): State<AppState>) -> AppResult<Json<GameStateResponse>> {
+    let game = state.manager.get_state().await?;
+    if game.is_day() {
+        return Err(AppError::bad_request("It is already daytime"));
+    }
+    let old_step = game.current_night_step.clone();
+    let new_state = state.manager.dispatch(EventPayload::DayBegan).await?;
+    maybe_phase_auto_effects(&state, &old_step, &new_state.current_night_step).await;
+    Ok(Json(build_game_state_response(&state).await?))
+}
+
+/// Begin the night: dusk falls and the game enters night mode.
+///
+/// Clears the day's nominations and anything left on the chopping block (end
+/// the day first via `POST /game/day/end` if an execution should happen).
+/// A night begun after any day is not the first night.
+#[utoipa::path(
+    post, path = "/game/night/begin", tag = "Game",
+    responses(
+        (status = 200, description = "Night begun; full game state returned", body = GameStateResponse),
+        (status = 400, description = "It is already night")
+    )
+)]
+async fn begin_night(State(state): State<AppState>) -> AppResult<Json<GameStateResponse>> {
+    let game = state.manager.get_state().await?;
+    if !game.is_day() {
+        return Err(AppError::bad_request("It is already night"));
+    }
+    let old_step = game.current_night_step.clone();
+    let new_state = state.manager.dispatch(EventPayload::NightBegan).await?;
+    maybe_phase_auto_effects(&state, &old_step, &new_state.current_night_step).await;
+    Ok(Json(build_game_state_response(&state).await?))
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct AnnounceDeathRequest {
+    /// A player from `deaths_to_announce`.
+    #[schema(example = "Alice")]
+    pub player_name: String,
+}
+
+/// Announce an overnight death: checks the player off `deaths_to_announce`
+/// and fires the death scene (sound + lights + overlay).
+#[utoipa::path(
+    post, path = "/game/day/announce_death", tag = "Game",
+    request_body = AnnounceDeathRequest,
+    responses(
+        (status = 200, description = "Death announced; full game state returned", body = GameStateResponse),
+        (status = 400, description = "It is not daytime"),
+        (status = 404, description = "Player is not awaiting announcement")
+    )
+)]
+async fn announce_death(
+    State(state): State<AppState>,
+    AppJson(req): AppJson<AnnounceDeathRequest>,
+) -> AppResult<Json<GameStateResponse>> {
+    let game = state.manager.get_state().await?;
+    if !game.is_day() {
+        return Err(AppError::bad_request("Deaths are announced during the day"));
+    }
+    if !game.deaths_to_announce.contains(&req.player_name) {
+        return Err(AppError::not_found(format!(
+            "{} is not awaiting announcement",
+            req.player_name
+        )));
+    }
+    state
+        .manager
+        .dispatch(EventPayload::DeathAnnounced {
+            player_name: req.player_name.clone(),
+        })
+        .await?;
+    // The announcement is the dramatic beat the night death skipped.
+    state.effects.trigger(LightingScene::Death, false).await;
+    Ok(Json(build_game_state_response(&state).await?))
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct NominationRequest {
+    /// The nominated player. Must be alive and not yet nominated today.
+    #[schema(example = "Alice")]
+    pub player_name: String,
+    /// Every player who voted. Each must be in `eligible_voters`; dead voters
+    /// automatically spend their one dead vote.
+    #[schema(example = json!(["Bob", "Carol"]))]
+    pub voters: Vec<String>,
+    /// Counted vote total, if it differs from the number of voters (e.g. a
+    /// Bureaucrat's vote counts three times). Defaults to `voters.len()`.
+    pub votes: Option<u32>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct NominationResponse {
+    /// What the vote did to the chopping block.
+    pub outcome: NominationOutcome,
+    #[serde(flatten)]
+    pub state: GameStateResponse,
+}
+
+/// Confirm a nomination's vote and resolve the chopping block.
+///
+/// Meeting the execution threshold AND beating the current block's votes puts
+/// the nominee on the block; exactly tying the current block empties it (a
+/// tie means no one is executed); fewer votes change nothing. Dead voters'
+/// dead votes are spent automatically, and the nomination is recorded in
+/// `nominations_today` (each player can be nominated once per day).
+#[utoipa::path(
+    post, path = "/game/nominations", tag = "Game",
+    request_body = NominationRequest,
+    responses(
+        (status = 200, description = "Vote resolved; outcome plus full game state", body = NominationResponse),
+        (status = 400, description = "Not daytime, nominee dead or already nominated, or a voter is ineligible/duplicated"),
+        (status = 404, description = "Nominee or voter not found")
+    )
+)]
+async fn record_nomination(
+    State(state): State<AppState>,
+    AppJson(req): AppJson<NominationRequest>,
+) -> AppResult<Json<NominationResponse>> {
+    let game = state.manager.get_state().await?;
+    if !game.is_day() {
+        return Err(AppError::bad_request("Nominations happen during the day"));
+    }
+    let nominee = game
+        .get_player(&req.player_name)
+        .ok_or_else(|| AppError::not_found(format!("Player not found: {}", req.player_name)))?;
+    if !nominee.is_alive {
+        return Err(AppError::bad_request(format!(
+            "{} is dead and cannot be nominated",
+            nominee.name
+        )));
+    }
+    if game.was_nominated_today(&req.player_name) {
+        return Err(AppError::bad_request(format!(
+            "{} has already been nominated today",
+            nominee.name
+        )));
+    }
+    let eligible = game.eligible_voters();
+    let mut seen = std::collections::HashSet::new();
+    for voter in &req.voters {
+        game.get_player(voter)
+            .ok_or_else(|| AppError::not_found(format!("Voter not found: {voter}")))?;
+        if !seen.insert(voter.as_str()) {
+            return Err(AppError::bad_request(format!("Duplicate voter: {voter}")));
+        }
+        if !eligible.contains(voter) {
+            return Err(AppError::bad_request(format!(
+                "{voter} has no vote (dead vote already spent)"
+            )));
+        }
+    }
+    let votes = req.votes.unwrap_or(req.voters.len() as u32);
+
+    let new_state = state
+        .manager
+        .dispatch(EventPayload::NominationRecorded {
+            player_name: req.player_name.clone(),
+            voters: req.voters.clone(),
+            votes,
+        })
+        .await?;
+    let outcome = new_state
+        .nominations_today
+        .last()
+        .map(|n| n.outcome)
+        .unwrap_or(NominationOutcome::BlockUnchanged);
+    if outcome == NominationOutcome::OnTheBlock && state.effects.auto_effects().nomination {
+        state.effects.trigger(LightingScene::Drama, false).await;
+    }
+    Ok(Json(NominationResponse {
+        outcome,
+        state: build_game_state_response(&state).await?,
+    }))
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct EndDayResponse {
+    /// The player who was executed (whoever was on the chopping block), if any.
+    pub executed: Option<String>,
+    #[serde(flatten)]
+    pub state: GameStateResponse,
+}
+
+/// End the day: whoever is on the chopping block is executed.
+///
+/// Safe to call with an empty block (nobody is executed). The game stays in
+/// day mode for last words — press `POST /game/night/begin` to move on.
+#[utoipa::path(
+    post, path = "/game/day/end", tag = "Game",
+    responses(
+        (status = 200, description = "Day ended; executed player (if any) plus full game state", body = EndDayResponse),
+        (status = 400, description = "It is not daytime")
+    )
+)]
+async fn end_day(State(state): State<AppState>) -> AppResult<Json<EndDayResponse>> {
+    let game = state.manager.get_state().await?;
+    if !game.is_day() {
+        return Err(AppError::bad_request("The day has not begun"));
+    }
+    let executed = game.chopping_block.as_ref().map(|b| b.player_name.clone());
+    if let Some(name) = &executed {
+        let cleared_effects = compute_death_cleared_effects(&game, name);
+        let new_state = state
+            .manager
+            .dispatch(EventPayload::PlayerExecuted {
+                player_name: name.clone(),
+                cleared_effects,
+            })
+            .await?;
+        state
+            .timer
+            .push_live_activity_update(
+                new_state.living_player_count() as i64,
+                new_state.players.len() as i64,
+            )
+            .await;
+        // An execution is a public daytime death.
+        if state.effects.auto_effects().death {
+            state.effects.trigger(LightingScene::Death, false).await;
+        }
+    }
+    Ok(Json(EndDayResponse {
+        executed,
+        state: build_game_state_response(&state).await?,
+    }))
 }
 
 // --- Event sourcing endpoints ---
